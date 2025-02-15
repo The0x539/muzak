@@ -3,7 +3,6 @@ use std::time::Duration;
 
 // return-position `impl Trait` presents some lifetime issues that I can't seem to solve yet, so whatever.
 // Proper use of impl-Trait here seems to be waiting on #![feature(precise_capturing_of_types)]
-pub type PartSource<S> = source::Amplify<source::FromIter<std::vec::IntoIter<S>>>;
 pub type EventSource<S> = source::TakeDuration<Chord<S>>;
 
 impl crate::types::Part {
@@ -11,9 +10,9 @@ impl crate::types::Part {
         &self,
         instrument: fn(f32, Duration) -> S,
         beat_duration: Duration,
-    ) -> PartSource<EventSource<S>>
+    ) -> impl Source<Item = f32> + 'static
     where
-        S: Source<Item = f32>,
+        S: Source<Item = f32> + 'static,
     {
         let mut event_sources = vec![];
 
@@ -21,7 +20,7 @@ impl crate::types::Part {
             event_sources.push(event.to_source(instrument, beat_duration));
         }
 
-        rodio::source::from_iter(event_sources).amplify(0.2)
+        rodio::source::from_iter(event_sources).low_pass(540)
     }
 }
 
@@ -53,13 +52,23 @@ pub mod instruments {
     use std::time::Duration;
 
     // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
-    pub fn sine(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
-        source::SignalGenerator::new(48000, freq, source::Function::Sine)
+    // (cons 'beep (muzak/make-instrument :waveform 'sine :effects nil))
+    pub fn beep(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
+        source::SignalGenerator::new(48000, freq, source::Function::Sine).amplify(0.7)
+    }
+
+    #[allow(dead_code)]
+    fn bezelea_square_signal(phase: f32) -> f32 {
+        (std::f32::consts::TAU * phase).sin().round()
     }
 
     // (cons 'square (lambda (f) (format "ceil(sin(t*%.2f))" (* 2 float-pi f))))
-    pub fn square(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
-        source::SignalGenerator::new(48000, freq, source::Function::Square)
+    // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear) :sustain muzak//default-duration))
+    pub fn keyboard(freq: f32, duration: Duration) -> impl Source<Item = f32> {
+        // let square = source::SignalGenerator::with_function(48000, freq, bezelea_square_signal);
+        let square = source::SignalGenerator::new(48000, freq, source::Function::Square);
+
+        square.linear_gain_ramp(duration, 1.0, 0.5, true)
     }
 }
 

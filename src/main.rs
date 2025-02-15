@@ -9,7 +9,7 @@ pub mod parse;
 pub mod types;
 
 fn main() {
-    let path = dirs::audio_dir().unwrap().join("balatro.txt");
+    let path = dirs::audio_dir().unwrap().join("balatro-r1.txt");
     let buffer = std::fs::read_to_string(path)
         .unwrap()
         .split_whitespace()
@@ -20,11 +20,15 @@ fn main() {
     let score = parse::score.parse(&mut input).unwrap();
     let beat_duration = Duration::from_secs(15) / score.bpm.unwrap_or(75);
 
-    let part_sources = score
-        .parts
-        .iter()
-        .map(|part| part.to_source(output::instruments::sine, beat_duration))
-        .collect::<Vec<_>>();
+    let mut part_sources = vec![];
+    for (i, part) in score.parts.iter().enumerate() {
+        let part: Box<dyn Source<Item = f32> + Send + Sync> = if i == 0 {
+            Box::new(part.to_source(output::instruments::beep, beat_duration))
+        } else {
+            Box::new(part.to_source(output::instruments::keyboard, beat_duration))
+        };
+        part_sources.push(part);
+    }
 
     let n = part_sources.len();
     let song_source = output::Chord {
