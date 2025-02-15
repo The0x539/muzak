@@ -25,8 +25,8 @@ impl Iterator for SquareWave {
 }
 
 impl Source for SquareWave {
-    fn current_frame_len(&self) -> Option<usize> {
-        self.sine.current_frame_len()
+    fn current_span_len(&self) -> Option<usize> {
+        self.sine.current_span_len()
     }
 
     fn channels(&self) -> u16 {
@@ -66,8 +66,8 @@ impl<I: Source<Item = f32>> Iterator for Chord<I> {
 }
 
 impl<I: Source<Item = f32>> Source for Chord<I> {
-    fn current_frame_len(&self) -> Option<usize> {
-        self.notes.get(0).and_then(|n| n.current_frame_len())
+    fn current_span_len(&self) -> Option<usize> {
+        self.notes.get(0).and_then(|n| n.current_span_len())
     }
 
     fn channels(&self) -> u16 {

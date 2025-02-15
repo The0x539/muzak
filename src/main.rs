@@ -20,7 +20,6 @@ fn main() {
     let score = parse::score.parse(&mut input).unwrap();
     let beat_duration = Duration::from_secs(15) / score.bpm.unwrap_or(75);
 
-    let mut song_duration = Duration::from_secs(0);
     let mut part_sources = vec![];
 
     for part in &score.parts {
@@ -42,7 +41,6 @@ fn main() {
             event_sources.push(chord.take_duration(event_duration));
         }
 
-        song_duration = song_duration.max(part_duration);
         part_sources.push(rodio::source::from_iter(event_sources).amplify(0.2));
     }
 
@@ -52,11 +50,13 @@ fn main() {
     }
     .amplify(n as f32);
 
-    // let samples = song_source.collect::<Vec<_>>();
-
-    // wavers::write("./balatro.wav", &samples, 48000, 1).unwrap();
-
-    let (_stream, handle) = rodio::OutputStream::try_default().unwrap();
-    handle.play_raw(song_source.convert_samples()).unwrap();
-    std::thread::sleep(song_duration);
+    if false {
+        let samples = song_source.collect::<Vec<_>>();
+        wavers::write("./balatro.wav", &samples, 48000, 1).unwrap();
+    } else {
+        let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
+        let sink = rodio::Sink::connect_new(&stream_handle.mixer());
+        sink.append(song_source);
+        sink.sleep_until_end();
+    }
 }
