@@ -28,7 +28,7 @@ fn main() {
         let mut event_sources = vec![];
 
         for event in part {
-            let mut chord = output::mixers::Chord { notes: vec![] };
+            let mut chord = output::Chord { notes: vec![] };
             let mut num_beats = 1;
 
             for note in event.notes() {
@@ -47,7 +47,7 @@ fn main() {
     }
 
     let n = part_sources.len();
-    let song_source = output::mixers::Chord {
+    let song_source = output::Chord {
         notes: part_sources,
     }
     .amplify(n as f32);
