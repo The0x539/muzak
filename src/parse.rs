@@ -44,7 +44,7 @@ pub fn note(input: &mut &str) -> Result<Note> {
         base: base_note,
         accidental: opt(accidental),
         octave: opt(integer),
-        duration: repeat(0.., '~').map(|n: usize| n + 1),
+        duration: repeat(0.., '~').map(|n: usize| n as u32 + 1),
     }}
     .parse_next(input)
 }
@@ -58,8 +58,10 @@ pub fn event(input: &mut &str) -> Result<Event> {
     .parse_next(input)
 }
 
-pub fn part(input: &mut &str) -> Result<Vec<Event>> {
-    repeat(0.., event).parse_next(input)
+pub fn part(input: &mut &str) -> Result<Part> {
+    repeat(0.., event)
+        .map(|events| Part { events })
+        .parse_next(input)
 }
 
 pub fn score(input: &mut &str) -> Result<Score> {

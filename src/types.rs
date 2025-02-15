@@ -3,7 +3,24 @@ use strum::VariantArray;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Score {
     pub bpm: Option<u32>,
-    pub parts: Vec<Vec<Event>>,
+    pub parts: Vec<Part>,
+}
+
+impl Score {
+    pub fn duration(&self) -> u32 {
+        self.parts.iter().map(|p| p.duration()).max().unwrap_or(1)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Part {
+    pub events: Vec<Event>,
+}
+
+impl Part {
+    pub fn duration(&self) -> u32 {
+        self.events.iter().map(|e| e.duration()).sum()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +38,10 @@ impl Event {
             Self::Chord(notes) => notes,
         }
     }
+
+    pub fn duration(&self) -> u32 {
+        self.notes().iter().map(|n| n.duration).max().unwrap_or(1)
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -28,7 +49,7 @@ pub struct Note {
     pub base: BaseNote,
     pub accidental: Option<Accidental>,
     pub octave: Option<i8>,
-    pub duration: usize,
+    pub duration: u32,
 }
 
 impl Note {

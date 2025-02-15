@@ -20,29 +20,11 @@ fn main() {
     let score = parse::score.parse(&mut input).unwrap();
     let beat_duration = Duration::from_secs(15) / score.bpm.unwrap_or(75);
 
-    let mut part_sources = vec![];
-
-    for part in &score.parts {
-        let mut part_duration = Duration::from_secs(0);
-        let mut event_sources = vec![];
-
-        for event in part {
-            let mut chord = output::Chord { notes: vec![] };
-            let mut num_beats = 1;
-
-            for note in event.notes() {
-                num_beats = num_beats.max(note.duration as u32);
-                let freq = note.to_frequency();
-                chord.notes.push(rodio::source::SineWave::new(freq));
-            }
-
-            let event_duration = num_beats * beat_duration;
-            part_duration += event_duration;
-            event_sources.push(chord.take_duration(event_duration));
-        }
-
-        part_sources.push(rodio::source::from_iter(event_sources).amplify(0.2));
-    }
+    let part_sources = score
+        .parts
+        .iter()
+        .map(|part| part.to_source(output::instruments::sine, beat_duration))
+        .collect::<Vec<_>>();
 
     let n = part_sources.len();
     let song_source = output::Chord {
@@ -57,6 +39,6 @@ fn main() {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
         let sink = rodio::Sink::connect_new(&stream_handle.mixer());
         sink.append(song_source);
-        sink.sleep_until_end();
+        std::thread::sleep(beat_duration * score.duration());
     }
 }

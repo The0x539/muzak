@@ -1,44 +1,65 @@
-use rodio::{Source, source::SineWave};
+use rodio::{Source, source};
 use std::time::Duration;
 
-// (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
-pub fn sine(freq: f32) -> SineWave {
-    SineWave::new(freq)
-}
+// return-position `impl Trait` presents some lifetime issues that I can't seem to solve yet, so whatever.
+// Proper use of impl-Trait here seems to be waiting on #![feature(precise_capturing_of_types)]
+pub type PartSource<S> = source::Amplify<source::FromIter<std::vec::IntoIter<S>>>;
+pub type EventSource<S> = source::TakeDuration<Chord<S>>;
 
-pub fn square(freq: f32) -> SquareWave {
-    SquareWave {
-        sine: SineWave::new(freq),
+impl crate::types::Part {
+    pub fn to_source<S>(
+        &self,
+        instrument: fn(f32, Duration) -> S,
+        beat_duration: Duration,
+    ) -> PartSource<EventSource<S>>
+    where
+        S: Source<Item = f32>,
+    {
+        let mut event_sources = vec![];
+
+        for event in &self.events {
+            event_sources.push(event.to_source(instrument, beat_duration));
+        }
+
+        rodio::source::from_iter(event_sources).amplify(0.2)
     }
 }
 
-pub struct SquareWave {
-    sine: SineWave,
-}
+impl crate::types::Event {
+    pub fn to_source<S>(
+        &self,
+        instrument: fn(f32, Duration) -> S,
+        beat_duration: Duration,
+    ) -> EventSource<S>
+    where
+        S: Source<Item = f32>,
+    {
+        let mut chord = Chord { notes: vec![] };
 
-impl Iterator for SquareWave {
-    type Item = f32;
+        let event_duration = self.duration() * beat_duration;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.sine.next().map(|n| n.ceil())
+        for note in self.notes() {
+            let freq = note.to_frequency();
+            let note = instrument(freq, event_duration);
+            chord.notes.push(note);
+        }
+
+        chord.take_duration(event_duration)
     }
 }
 
-impl Source for SquareWave {
-    fn current_span_len(&self) -> Option<usize> {
-        self.sine.current_span_len()
+pub mod instruments {
+    use rodio::{Source, source};
+    use std::time::Duration;
+
+    // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
+    pub fn sine(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
+        source::SignalGenerator::new(48000, freq, source::Function::Sine)
     }
 
-    fn channels(&self) -> u16 {
-        self.sine.channels()
-    }
-
-    fn sample_rate(&self) -> u32 {
-        self.sine.sample_rate()
-    }
-
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        self.sine.total_duration()
+    // (cons 'square (lambda (f) (format "ceil(sin(t*%.2f))" (* 2 float-pi f))))
+    pub fn square(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
+        source::SignalGenerator::new(48000, freq, source::Function::Square)
     }
 }
 
@@ -54,14 +75,8 @@ impl<I: Source<Item = f32>> Iterator for Chord<I> {
             return Some(0.0);
         }
 
-        let (mut sum, mut count) = (0.0, 0);
-        for note in &mut self.notes {
-            if let Some(sample) = note.next() {
-                sum += sample;
-                count += 1;
-            }
-        }
-        (count > 0).then_some(sum / count as f32)
+        let sum: f32 = self.notes.iter_mut().filter_map(|n| n.next()).sum();
+        Some(sum / self.notes.len() as f32)
     }
 }
 
