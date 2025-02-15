@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use rodio::Source;
 
 pub struct Chord<I: Source<Item = f32>> {
@@ -36,7 +38,16 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
         self.notes.get(0).map_or(48000, |n| n.sample_rate())
     }
 
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        self.notes.get(0).and_then(|n| n.total_duration())
+    fn total_duration(&self) -> Option<Duration> {
+        if self.notes.is_empty() {
+            return None;
+        }
+
+        let mut dur = Duration::from_secs(0);
+        for note in &self.notes {
+            // if any component has unknown duration, the mixer as a whole does
+            dur = dur.max(note.total_duration()?);
+        }
+        Some(dur)
     }
 }
