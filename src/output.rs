@@ -6,14 +6,11 @@ use std::time::Duration;
 pub type EventSource<S> = source::TakeDuration<Chord<S>>;
 
 impl crate::types::Part {
-    pub fn to_source<S>(
+    pub fn to_source<S: Source<Item = f32> + 'static>(
         &self,
         instrument: fn(f32, Duration) -> S,
         beat_duration: Duration,
-    ) -> impl Source<Item = f32> + 'static
-    where
-        S: Source<Item = f32> + 'static,
-    {
+    ) -> impl Source<Item = f32> + 'static {
         let mut event_sources = vec![];
 
         for event in &self.events {
@@ -25,14 +22,11 @@ impl crate::types::Part {
 }
 
 impl crate::types::Event {
-    pub fn to_source<S>(
+    pub fn to_source<S: Source<Item = f32>>(
         &self,
         instrument: fn(f32, Duration) -> S,
         beat_duration: Duration,
-    ) -> EventSource<S>
-    where
-        S: Source<Item = f32>,
-    {
+    ) -> EventSource<S> {
         let mut chord = Chord { notes: vec![] };
 
         let event_duration = self.duration() * beat_duration;

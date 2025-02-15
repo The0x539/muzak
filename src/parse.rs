@@ -1,11 +1,9 @@
 use std::str::FromStr;
 
 use strum::VariantArray;
-use winnow::{
-    Parser, Result,
-    combinator::{alt, delimited, opt, repeat, separated, seq},
-    token::{one_of, take_while},
-};
+use winnow::combinator::{alt, delimited, opt, preceded, repeat, separated, seq, terminated};
+use winnow::token::{one_of, take_till, take_while};
+use winnow::{Parser, Result};
 
 use crate::types::*;
 
@@ -59,15 +57,22 @@ pub fn event(input: &mut &str) -> Result<Event> {
 }
 
 pub fn part(input: &mut &str) -> Result<Part> {
-    repeat(0.., event)
+    repeat(0.., terminated(event, junk))
         .map(|events| Part { events })
         .parse_next(input)
 }
 
 pub fn score(input: &mut &str) -> Result<Score> {
     seq! {Score{
+        _: junk,
         bpm: opt(integer),
-        parts: separated(0.., part, '|'),
+        parts: separated(0.., preceded(junk, part), '|'),
     }}
     .parse_next(input)
+}
+
+fn junk(input: &mut &str) -> Result<()> {
+    take_till(0.., b"ABCDEFGabcdefg0123456789|[/")
+        .void()
+        .parse_next(input)
 }
