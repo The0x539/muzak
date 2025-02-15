@@ -30,10 +30,13 @@ fn main() {
         part_sources.push(part);
     }
 
+    let song_duration = beat_duration * score.duration();
+
     let n = part_sources.len();
     let song_source = output::Chord {
         notes: part_sources,
     }
+    .take_duration(song_duration)
     .amplify(n as f32);
 
     if false {
@@ -43,6 +46,6 @@ fn main() {
         let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
         let sink = rodio::Sink::connect_new(&stream_handle.mixer());
         sink.append(song_source);
-        std::thread::sleep(beat_duration * score.duration());
+        std::thread::sleep(song_duration);
     }
 }
