@@ -42,7 +42,7 @@ pub fn note(input: &mut &str) -> Result<Note> {
         base: base_note,
         accidental: opt(accidental),
         octave: opt(integer),
-        duration: repeat(0.., '~').map(|n: usize| n as u32 + 1),
+        duration: repeat(0.., preceded(junk, '~')).map(|n: usize| n as u32 + 1),
     }}
     .parse_next(input)
 }
@@ -72,7 +72,7 @@ pub fn score(input: &mut &str) -> Result<Score> {
 }
 
 fn junk(input: &mut &str) -> Result<()> {
-    take_till(0.., b"ABCDEFGabcdefg0123456789|[/")
+    take_till(0.., b"ABCDEFGabcdefg0123456789|[/~")
         .void()
         .parse_next(input)
 }
