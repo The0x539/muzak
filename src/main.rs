@@ -1,47 +1,119 @@
-use std::time::Duration;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
-use rodio::Source;
-use winnow::Parser;
+use clap::Parser;
+use muzak::rodio::Source;
+use muzak::types::Score;
 
-pub mod fmt;
-pub mod output;
-pub mod parse;
-pub mod types;
+#[derive(Parser, Debug, Clone)]
+#[command(version, about)]
+struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
 
-fn main() {
-    let path = dirs::audio_dir().unwrap().join("obra dinn.txt");
-    let buffer = std::fs::read_to_string(path).unwrap();
-    let mut input = &*buffer;
+#[derive(Parser, Debug, Clone)]
+enum Command {
+    Play {
+        score_path: Option<PathBuf>,
+    },
+    Render {
+        score_path: Option<PathBuf>,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
 
-    let score = parse::score.parse(&mut input).unwrap();
+type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
-    let beat_duration = Duration::from_secs(15) / score.bpm.unwrap_or(75);
+fn main() -> Result<()> {
+    let args = Args::parse();
 
-    let mut part_sources = vec![];
-    for (i, part) in score.parts.iter().enumerate() {
-        let part: Box<dyn Source<Item = f32> + Send + Sync> = match i {
-            0 => Box::new(part.to_source(output::instruments::beep, beat_duration)),
-            _ => Box::new(part.to_source(output::instruments::keyboard, beat_duration)),
-        };
-        part_sources.push(part);
+    let (Command::Play { score_path } | Command::Render { score_path, .. }) = &args.command;
+    let score_text: String = match score_path {
+        None if atty::is(atty::Stream::Stdin) => {
+            eprintln!("Please specify an input path or use a redirect to pass data through stdin");
+            return Ok(());
+        }
+        None => {
+            let mut buf = String::new();
+            std::io::stdin().read_to_string(&mut buf)?;
+            buf
+        }
+        Some(path) => std::fs::read_to_string(path)?,
+    };
+
+    // winnow errors don't impl std::error::Error for some reason
+    let score = muzak::parse(&score_text).expect("Could not parse score");
+
+    match args.command {
+        Command::Play { .. } => muzak::play(&score),
+        Command::Render { output, .. } => {
+            let out_path = output.as_deref().unwrap_or("-".as_ref());
+            export(out_path, &score)?;
+        }
     }
 
-    let song_duration = beat_duration * score.duration();
+    Ok(())
+}
 
-    let n = part_sources.len();
-    let song_source = output::Chord {
-        notes: part_sources,
-    }
-    .take_duration(song_duration)
-    .amplify(n as f32);
+fn export(path: impl AsRef<Path>, score: &Score) -> Result<()> {
+    let source = muzak::mix(score);
+    let path = path.as_ref();
+    if path == Path::new("-") {
+        if atty::is(atty::Stream::Stdout) {
+            let sure = dialoguer::Confirm::new()
+                .with_prompt("Really output WAVE data to terminal?")
+                .default(false)
+                .interact()?;
 
-    if true {
-        let samples = song_source.collect::<Vec<_>>();
-        wavers::write("./obra dinn.wav", &samples, 48000, 1).unwrap();
+            if !sure {
+                return Ok(());
+            }
+        }
+
+        // hound's writer impl needs to seek back to the start to write the data length,
+        // so we can't just write directly to stdout without switching crates again
+        // TODO: use WavSpec::into_header_for_infinite_file in both cases
+        let mut buf = std::io::Cursor::new(Vec::new());
+        export_impl(&mut buf, source)?;
+        std::io::stdout().write_all(buf.get_ref())?;
     } else {
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
-        let sink = rodio::Sink::connect_new(&stream_handle.mixer());
-        sink.append(song_source);
-        std::thread::sleep(song_duration);
+        if path.exists() {
+            let sure = dialoguer::Confirm::new()
+                .with_prompt(format!("Overwrite {}?", path.display()))
+                .default(true)
+                .interact()?;
+
+            if !sure {
+                return Ok(());
+            }
+        }
+
+        let file = std::io::BufWriter::new(File::create(path)?);
+        export_impl(file, source)?;
     }
+
+    Ok(())
+}
+
+fn export_impl<W: Write + std::io::Seek>(
+    writer: W,
+    source: impl Source<Item = f32>,
+) -> Result<(), hound::Error> {
+    // If there's only 1 channel, hound seems to put it on the left. Annoying.
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: 48000,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut wav = hound::WavWriter::new(writer, spec)?;
+    for sample in source {
+        wav.write_sample(sample)?;
+        wav.write_sample(sample)?;
+    }
+    wav.finalize()?;
+    Ok(())
 }

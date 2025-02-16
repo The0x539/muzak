@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use strum::VariantArray;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -7,8 +9,12 @@ pub struct Score {
 }
 
 impl Score {
-    pub fn duration(&self) -> u32 {
-        self.parts.iter().map(|p| p.duration()).max().unwrap_or(1)
+    pub fn beat_count(&self) -> u32 {
+        self.parts.iter().map(|p| p.beat_count()).max().unwrap_or(1)
+    }
+
+    pub fn beat_duration(&self) -> Duration {
+        Duration::from_secs(15) / self.bpm.unwrap_or(75)
     }
 }
 
@@ -18,8 +24,8 @@ pub struct Part {
 }
 
 impl Part {
-    pub fn duration(&self) -> u32 {
-        self.events.iter().map(|e| e.duration()).sum()
+    pub fn beat_count(&self) -> u32 {
+        self.events.iter().map(|e| e.beat_count()).sum()
     }
 }
 
@@ -39,7 +45,7 @@ impl Event {
         }
     }
 
-    pub fn duration(&self) -> u32 {
+    pub fn beat_count(&self) -> u32 {
         self.notes().iter().map(|n| n.duration).max().unwrap_or(1)
     }
 }

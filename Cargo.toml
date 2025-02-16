@@ -4,9 +4,23 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-dirs = "6.0.0"
 # waiting on the release of a version with SignalGenerator
 rodio = { git = "https://github.com/RustAudio/rodio" }
 strum = { version = "0.27.0", features = ["derive"] }
-wavers = "1.5.1"
 winnow = "0.7.2"
+
+atty = { version = "0.2.14", optional = true }
+dialoguer = { version = "0.11.0", optional = true }
+hound = { version = "3.5.1", optional = true }
+clap = { version = "4.5.29", optional = true, features = ["derive"] }
+
+[features]
+default = ["build-binary"]
+build-binary = ["atty", "dialoguer", "hound", "clap"]
+
+[lib]
+name = "muzak"
+
+[[bin]]
+name = "muzak"
+required-features = ["build-binary"]

@@ -29,7 +29,7 @@ impl crate::types::Event {
     ) -> EventSource<S> {
         let mut chord = Chord { notes: vec![] };
 
-        let event_duration = self.duration() * beat_duration;
+        let event_duration = self.beat_count() * beat_duration;
 
         for note in self.notes() {
             let freq = note.to_frequency();
