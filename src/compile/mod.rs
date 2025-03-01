@@ -5,7 +5,7 @@
 use musicxml::datatypes::*;
 use musicxml::elements::*;
 
-pub fn compile(xml: &str) -> String {
+pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
     let data = xml.as_bytes().to_vec(); // ¯\_(ツ)_/¯
     let mxml = musicxml::read_score_data_partwise(data).unwrap();
 
@@ -13,7 +13,27 @@ pub fn compile(xml: &str) -> String {
     let mut score = state.score(&mxml);
 
     score.unify_divisions();
+
+    for _ in 0..padding {
+        score.parts.insert(0, empty_part());
+    }
+    for _ in 0..rotation {
+        score.parts.rotate_right(1);
+    }
+
     score.to_string()
+}
+
+fn empty_part() -> output::Part {
+    output::Part {
+        measures: vec![output::Measure {
+            events: vec![output::Event {
+                duration: 1,
+                notes: vec![],
+            }],
+            ..Default::default()
+        }],
+    }
 }
 
 mod extensions;

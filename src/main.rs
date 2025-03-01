@@ -21,7 +21,18 @@ struct Args {
 
 #[derive(Parser, Debug, Clone)]
 enum Command {
-    Compile,
+    /// Convert MusicXML to bells-text.
+    Compile {
+        /// Insert some number of blank tracks before the first track.
+        /// Possibly useful for instrument selection.
+        #[arg(short, long = "pad", default_value_t)]
+        padding: u8,
+        /// Rotate the track list forward by some amount.
+        /// Possibly useful for instrument selection.
+        #[arg(short, long = "rotate", default_value_t)]
+        rotation: u8,
+    },
+    /// Convert bells-text to audio, either over speakers or as WAV data.
     Play,
 }
 
@@ -33,8 +44,8 @@ fn main() -> Result<()> {
     let input = read_text(args.input_file.as_deref())?;
 
     match args.command {
-        Command::Compile => {
-            let bells = muzak::compile(&input);
+        Command::Compile { padding, rotation } => {
+            let bells = muzak::compile(&input, padding, rotation);
             println!("{bells}");
         }
         Command::Play => {
