@@ -1,9 +1,8 @@
-use rodio::{Source, source};
+use rodio::Source;
 use std::time::Duration;
 
 // return-position `impl Trait` presents some lifetime issues that I can't seem to solve yet, so whatever.
 // Proper use of impl-Trait here seems to be waiting on #![feature(precise_capturing_of_types)]
-pub type EventSource<S> = source::TakeDuration<Chord<S>>;
 
 impl crate::types::Part {
     pub fn to_source<S: Source<Item = f32> + 'static>(
@@ -11,13 +10,18 @@ impl crate::types::Part {
         instrument: fn(f32, Duration) -> S,
         beat_duration: Duration,
     ) -> impl Source<Item = f32> + 'static {
-        let mut event_sources = vec![];
+        let mut track = Chord::new();
+
+        let mut offset = Duration::ZERO;
 
         for event in &self.events {
-            event_sources.push(event.to_source(instrument, beat_duration));
+            let (event, event_duration) = event.to_source(instrument, beat_duration);
+            let event = event.delay(offset);
+            offset += event_duration;
+            track.add(event);
         }
 
-        rodio::source::from_iter(event_sources).low_pass(1000)
+        track.low_pass(1000).take_duration(offset)
     }
 }
 
@@ -26,7 +30,7 @@ impl crate::types::Event {
         &self,
         instrument: fn(f32, Duration) -> S,
         beat_duration: Duration,
-    ) -> EventSource<S> {
+    ) -> (Chord<S>, Duration) {
         let mut chord = Chord { notes: vec![] };
 
         let event_duration = self.beat_count() * beat_duration;
@@ -34,10 +38,10 @@ impl crate::types::Event {
         for note in self.notes() {
             let freq = note.to_frequency();
             let note = instrument(freq, event_duration);
-            chord.notes.push(note);
+            chord.add(note);
         }
 
-        chord.take_duration(event_duration)
+        (chord, event_duration)
     }
 }
 
@@ -47,8 +51,10 @@ pub mod instruments {
 
     // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
     // (cons 'beep (muzak/make-instrument :waveform 'sine :effects nil))
-    pub fn beep(freq: f32, _duration: Duration) -> impl Source<Item = f32> {
-        source::SignalGenerator::new(48000, freq, source::Function::Sine).amplify(0.7)
+    pub fn beep(freq: f32, duration: Duration) -> impl Source<Item = f32> {
+        source::SignalGenerator::new(48000, freq, source::Function::Sine)
+            .amplify(0.7)
+            .take_duration(duration)
     }
 
     #[allow(dead_code)]
@@ -60,28 +66,43 @@ pub mod instruments {
     // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear) :sustain muzak//default-duration))
     pub fn keyboard(freq: f32, duration: Duration) -> impl Source<Item = f32> {
         // let square = source::SignalGenerator::with_function(48000, freq, bezelea_square_signal);
-        let square = source::SignalGenerator::new(48000, freq, source::Function::Square);
+        let square = source::SignalGenerator::new(48000, freq, source::Function::Sawtooth);
 
         square
             .linear_gain_ramp(duration, 1.0, 0.5, true)
             .amplify(0.5)
+            .take_duration(duration)
     }
 }
 
-pub struct Chord<I: Source<Item = f32>> {
-    pub(crate) notes: Vec<I>,
+pub struct Chord<I> {
+    notes: Vec<I>,
+}
+
+impl<I> Chord<I> {
+    pub fn new() -> Self {
+        Self { notes: vec![] }
+    }
+
+    pub fn add(&mut self, note: I) {
+        self.notes.push(note);
+    }
 }
 
 impl<I: Source<Item = f32>> Iterator for Chord<I> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.notes.is_empty() {
-            return Some(0.0);
+        let mut any = false; // Is there any source still producing samples?
+        let mut sum = 0.0;
+        for note in &mut self.notes {
+            if let Some(sample) = note.next() {
+                sum += sample;
+                any = true;
+            }
         }
-
-        let sum: f32 = self.notes.iter_mut().filter_map(|n| n.next()).sum();
-        Some(sum / self.notes.len() as f32)
+        // sum /= self.notes.len() as f32;
+        any.then_some(sum)
     }
 }
 
@@ -109,5 +130,20 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
             dur = dur.max(note.total_duration()?);
         }
         Some(dur)
+    }
+}
+
+pub trait SourceExt: Source {
+    fn boxed(self) -> Box<dyn Source<Item = Self::Item> + Send + Sync + 'static>
+    where
+        Self: Send + Sync + 'static;
+}
+
+impl<S: Source> SourceExt for S {
+    fn boxed(self) -> Box<dyn Source<Item = Self::Item> + Send + Sync + 'static>
+    where
+        Self: Send + Sync + 'static,
+    {
+        Box::new(self)
     }
 }
