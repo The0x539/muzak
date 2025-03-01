@@ -1,9 +1,9 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use clap::Parser;
-use muzak::types::Score;
 use wavers::WavHeader;
 
 #[derive(Parser, Debug, Clone)]
@@ -33,7 +33,10 @@ enum Command {
         rotation: u8,
     },
     /// Convert bells-text to audio, either over speakers or as WAV data.
-    Play,
+    Play {
+        #[arg(short = 'd', long, value_name = "SECONDS")]
+        max_duration: Option<f64>,
+    },
 }
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
@@ -53,10 +56,13 @@ fn main() -> Result<()> {
                 println!("{bells}");
             }
         }
-        Command::Play => {
+        Command::Play { max_duration } => {
             // winnow errors don't impl std::error::Error for some reason
             let score = muzak::parse(&input).expect("Could not parse score");
-            output_audio(args.output_file.as_deref(), &score)?;
+
+            let max_duration = max_duration.map(Duration::from_secs_f64);
+            let (source, duration) = muzak::mix(&score, max_duration);
+            output_audio(args.output_file.as_deref(), source, duration)?;
         }
     }
 
@@ -93,21 +99,26 @@ fn ask_before_overwriting(path: &Path) -> Result<File> {
     Ok(f)
 }
 
-fn output_audio(path: Option<&Path>, score: &Score) -> Result<()> {
+fn output_audio(
+    path: Option<&Path>,
+    source: impl rodio::Source<Item = f32> + Send + 'static,
+    duration: Duration,
+) -> Result<()> {
     if let Some(path) = path {
-        write_wav(ask_before_overwriting(path)?, score)?;
+        write_wav(ask_before_overwriting(path)?, source)?;
     } else if atty::isnt(atty::Stream::Stdout) {
-        write_wav(std::io::stdout(), score)?;
+        write_wav(std::io::stdout(), source)?;
     } else {
-        muzak::play(score);
+        muzak::play(source, duration);
     }
 
     Ok(())
 }
 
-fn write_wav(mut writer: impl Write, score: &Score) -> Result<()> {
-    let source = muzak::mix(score);
-
+fn write_wav(
+    mut writer: impl Write,
+    source: impl rodio::Source<Item = f32> + Send + 'static,
+) -> Result<()> {
     let mut samples: Vec<f32> = source.collect();
 
     if cfg!(target_endian = "big") {
