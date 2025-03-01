@@ -1,80 +1,53 @@
-use rodio::Source;
+use rodio::source::*;
 use std::time::Duration;
 
-// return-position `impl Trait` presents some lifetime issues that I can't seem to solve yet, so whatever.
-// Proper use of impl-Trait here seems to be waiting on #![feature(precise_capturing_of_types)]
+pub trait Instrument {
+    type Note: Source<Item = f32> + Send + 'static;
 
-impl crate::types::Part {
-    pub fn to_source<S: Source<Item = f32> + 'static>(
-        &self,
-        instrument: fn(f32, Duration) -> S,
+    fn play_note(frequency: f32, duration: Duration) -> Self::Note;
+
+    fn play_chord(
+        event: &crate::types::Event,
         beat_duration: Duration,
-    ) -> impl Source<Item = f32> + 'static {
+    ) -> (Chord<Self::Note>, Duration) {
+        let mut chord = crate::output::Chord { notes: vec![] };
+
+        let event_duration = event.beat_count() * beat_duration;
+
+        for note in event.notes() {
+            let freq = note.to_frequency();
+            let note = Self::play_note(freq, event_duration);
+            chord.add(note);
+        }
+
+        (chord, event_duration)
+    }
+
+    // TODO: allow instruments to somehow select between delay+sum sequencing
+    // and the more lightweight from_iter mode of sequencing,
+    // as only instruments with sustain actually need the former
+    fn play_part(
+        part: &crate::types::Part,
+        beat_duration: Duration,
+    ) -> TakeDuration<BltFilter<Chord<Delay<Chord<Self::Note>>>>> {
         let mut track = Chord::new();
 
         let mut offset = Duration::ZERO;
 
-        for event in &self.events {
-            let (event, event_duration) = event.to_source(instrument, beat_duration);
-            let event = event.delay(offset);
+        for event in &part.events {
+            let (chord, event_duration) = Self::play_chord(event, beat_duration);
+            if !event.notes().is_empty() {
+                track.add(chord.delay(offset));
+            }
             offset += event_duration;
-            track.add(event);
         }
 
         track.low_pass(1000).take_duration(offset)
     }
 }
 
-impl crate::types::Event {
-    pub fn to_source<S: Source<Item = f32>>(
-        &self,
-        instrument: fn(f32, Duration) -> S,
-        beat_duration: Duration,
-    ) -> (Chord<S>, Duration) {
-        let mut chord = Chord { notes: vec![] };
-
-        let event_duration = self.beat_count() * beat_duration;
-
-        for note in self.notes() {
-            let freq = note.to_frequency();
-            let note = instrument(freq, event_duration);
-            chord.add(note);
-        }
-
-        (chord, event_duration)
-    }
-}
-
-pub mod instruments {
-    use rodio::{Source, source};
-    use std::time::Duration;
-
-    // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
-    // (cons 'beep (muzak/make-instrument :waveform 'sine :effects nil))
-    pub fn beep(freq: f32, duration: Duration) -> impl Source<Item = f32> {
-        source::SignalGenerator::new(48000, freq, source::Function::Sine)
-            .amplify(0.7)
-            .take_duration(duration)
-    }
-
-    #[allow(dead_code)]
-    fn bezelea_square_signal(phase: f32) -> f32 {
-        (std::f32::consts::TAU * phase).sin().round()
-    }
-
-    // (cons 'square (lambda (f) (format "ceil(sin(t*%.2f))" (* 2 float-pi f))))
-    // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear) :sustain muzak//default-duration))
-    pub fn keyboard(freq: f32, duration: Duration) -> impl Source<Item = f32> {
-        // let square = source::SignalGenerator::with_function(48000, freq, bezelea_square_signal);
-        let square = source::SignalGenerator::new(48000, freq, source::Function::Sawtooth);
-
-        square
-            .linear_gain_ramp(duration, 1.0, 0.5, true)
-            .amplify(0.5)
-            .take_duration(duration)
-    }
-}
-
+/// A more barebones implementation of something like rodio::mixer,
+/// with no fancy boxed sources or shared references.
 pub struct Chord<I> {
     notes: Vec<I>,
 }

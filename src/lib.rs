@@ -9,12 +9,14 @@ mod compile;
 mod fmt;
 mod parse;
 
+pub mod instruments;
 pub mod output;
 pub mod types;
 
 pub use compile::compile;
 
-use output::{SourceExt, instruments};
+use instruments::*;
+use output::{Instrument, SourceExt};
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
@@ -34,8 +36,8 @@ pub fn mix(
 
     for (i, part) in score.parts.iter().enumerate() {
         let track = match i {
-            0 => part.to_source(instruments::beep, beat).boxed(),
-            _ => part.to_source(instruments::keyboard, beat).boxed(),
+            0 => Beep::play_part(part, beat).boxed(),
+            _ => Keyboard::play_part(part, beat).boxed(),
         };
         mixer.add(track);
     }
