@@ -34,8 +34,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Command::Compile => {
-            let musicxml = read_text(args.input_file.as_deref())?;
-            let bells = muzak::compile(&musicxml);
+            let bells = muzak::compile(&input);
             println!("{bells}");
         }
         Command::Play => {
