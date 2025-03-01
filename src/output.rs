@@ -36,11 +36,10 @@ pub trait Instrument {
             if !event.notes().is_empty() {
                 track.add(chord.delay(offset));
             }
-
             offset += event_duration;
         }
 
-        Box::new(track.low_pass(1000).take_duration(offset))
+        Box::new(track.low_pass(540).take_duration(offset))
     }
 }
 
@@ -105,3 +104,79 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
         Some(dur)
     }
 }
+
+// This is only distinct from the Fn trait to make nameable types for static dispatch.
+pub trait Effect {
+    fn calculate(&self, elapsed: f32) -> f32;
+}
+
+/// A generic wrapper to apply any "time -> multiplier" modifier to a source.
+#[derive(Clone, Debug)]
+pub struct ApplyEffect<I, E> {
+    input: I,
+    effect: E,
+    elapsed: f32,
+    sample_idx: u64,
+}
+
+impl<I: Source, E: Effect> ApplyEffect<I, E> {
+    pub fn new(input: I, effect: E) -> Self {
+        Self {
+            input,
+            effect,
+            elapsed: 0.0,
+            sample_idx: 0,
+        }
+    }
+}
+
+impl<I: Source, E: Effect> Iterator for ApplyEffect<I, E> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<I::Item> {
+        let factor = self.effect.calculate(self.elapsed);
+
+        self.sample_idx += 1;
+        if self.sample_idx % (self.channels() as u64) == 0 {
+            self.elapsed += 1.0 / (self.input.sample_rate() as f32);
+        }
+
+        self.input.next().map(|value| value * factor)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.input.size_hint()
+    }
+}
+
+impl<I: Source, E: Effect> Source for ApplyEffect<I, E> {
+    fn current_span_len(&self) -> Option<usize> {
+        self.input.current_span_len()
+    }
+
+    fn channels(&self) -> rodio::ChannelCount {
+        self.input.channels()
+    }
+
+    fn sample_rate(&self) -> rodio::SampleRate {
+        self.input.sample_rate()
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        self.input.total_duration()
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        self.elapsed = pos.as_secs_f32();
+        self.input.try_seek(pos)
+    }
+}
+
+pub trait SourceExt: Source<Item = f32> + Sized {
+    fn with_effect<E: Effect>(self, effect: E) -> ApplyEffect<Self, E> {
+        ApplyEffect::new(self, effect)
+    }
+}
+
+impl<S: Source<Item = f32>> SourceExt for S {}
