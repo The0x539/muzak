@@ -17,7 +17,7 @@ impl crate::types::Part {
             event_sources.push(event.to_source(instrument, beat_duration));
         }
 
-        rodio::source::from_iter(event_sources).low_pass(540)
+        rodio::source::from_iter(event_sources).low_pass(1000)
     }
 }
 
@@ -62,7 +62,9 @@ pub mod instruments {
         // let square = source::SignalGenerator::with_function(48000, freq, bezelea_square_signal);
         let square = source::SignalGenerator::new(48000, freq, source::Function::Square);
 
-        square.linear_gain_ramp(duration, 1.0, 0.5, true)
+        square
+            .linear_gain_ramp(duration, 1.0, 0.5, true)
+            .amplify(0.5)
     }
 }
 
