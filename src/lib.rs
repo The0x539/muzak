@@ -15,8 +15,7 @@ pub mod types;
 
 pub use compile::compile;
 
-use instruments::*;
-use output::{Instrument, SourceExt};
+use output::Instrument;
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
@@ -35,11 +34,11 @@ pub fn mix(
     let mut mixer = output::Chord::new();
 
     for (i, part) in score.parts.iter().enumerate() {
-        let track = match i {
-            0 => Beep::play_part(part, beat).boxed(),
-            _ => Keyboard::play_part(part, beat).boxed(),
+        let play_fn = match i {
+            0 => instruments::Beep::play_part,
+            1.. => instruments::Keyboard::play_part,
         };
-        mixer.add(track);
+        mixer.add(play_fn(part, beat));
     }
 
     let desired_duration = beat * score.beat_count();

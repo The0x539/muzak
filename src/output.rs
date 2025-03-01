@@ -23,13 +23,10 @@ pub trait Instrument {
         (chord, event_duration)
     }
 
-    // TODO: allow instruments to somehow select between delay+sum sequencing
-    // and the more lightweight from_iter mode of sequencing,
-    // as only instruments with sustain actually need the former
-    fn play_part(
-        part: &crate::types::Part,
-        beat_duration: Duration,
-    ) -> TakeDuration<BltFilter<Chord<Delay<Chord<Self::Note>>>>> {
+    // TODO: only use delay+chord style sequencing for instruments that actually need it,
+    // i.e., ones that apply sustain to notes. for instruments that don't, the more
+    // lightweight and straightforward from_iter approach works just fine
+    fn play_part(part: &crate::types::Part, beat_duration: Duration) -> BoxSource<f32> {
         let mut track = Chord::new();
 
         let mut offset = Duration::ZERO;
@@ -39,12 +36,15 @@ pub trait Instrument {
             if !event.notes().is_empty() {
                 track.add(chord.delay(offset));
             }
+
             offset += event_duration;
         }
 
-        track.low_pass(1000).take_duration(offset)
+        Box::new(track.low_pass(1000).take_duration(offset))
     }
 }
+
+pub type BoxSource<T> = Box<dyn Source<Item = T> + Send + 'static>;
 
 /// A more barebones implementation of something like rodio::mixer,
 /// with no fancy boxed sources or shared references.
@@ -103,20 +103,5 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
             dur = dur.max(note.total_duration()?);
         }
         Some(dur)
-    }
-}
-
-pub trait SourceExt: Source {
-    fn boxed(self) -> Box<dyn Source<Item = Self::Item> + Send + Sync + 'static>
-    where
-        Self: Send + Sync + 'static;
-}
-
-impl<S: Source> SourceExt for S {
-    fn boxed(self) -> Box<dyn Source<Item = Self::Item> + Send + Sync + 'static>
-    where
-        Self: Send + Sync + 'static,
-    {
-        Box::new(self)
     }
 }
