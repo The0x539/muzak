@@ -39,7 +39,7 @@ pub trait Instrument {
             offset += event_duration;
         }
 
-        Box::new(track.low_pass(540).take_duration(offset))
+        Box::new(track.low_pass(1000).take_duration(offset))
     }
 }
 
