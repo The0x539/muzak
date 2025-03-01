@@ -35,6 +35,31 @@ impl Score {
 
         max
     }
+
+    pub fn fix_carryover_chords(&mut self) {
+        for part in &mut self.parts {
+            for i in 1..part.measures.len() {
+                let [prev, cur] = &mut part.measures[i - 1..=i] else {
+                    unreachable!()
+                };
+
+                let prev_event = prev.events.last_mut().unwrap();
+
+                if prev_event.notes.len() <= 1 {
+                    // not a chord, so we don't care
+                    continue;
+                }
+
+                if cur.carryover == 0 {
+                    // not a tied note, so we don't care
+                    continue;
+                }
+
+                prev_event.duration += cur.carryover;
+                cur.carryover = 0;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]

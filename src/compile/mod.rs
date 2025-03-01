@@ -13,6 +13,7 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
     let mut score = state.score(&mxml);
 
     score.unify_divisions();
+    score.fix_carryover_chords();
 
     for _ in 0..padding {
         score.parts.insert(0, empty_part());
