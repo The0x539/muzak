@@ -46,7 +46,12 @@ fn main() -> Result<()> {
     match args.command {
         Command::Compile { padding, rotation } => {
             let bells = muzak::compile(&input, padding, rotation);
-            println!("{bells}");
+            if let Some(path) = args.output_file.as_deref() {
+                let mut f = ask_before_overwriting(path)?;
+                write!(f, "{bells}")?;
+            } else {
+                println!("{bells}");
+            }
         }
         Command::Play => {
             // winnow errors don't impl std::error::Error for some reason
@@ -72,21 +77,25 @@ fn read_text(path: Option<&Path>) -> Result<String> {
     }
 }
 
+fn ask_before_overwriting(path: &Path) -> Result<File> {
+    if path.exists() {
+        let sure = dialoguer::Confirm::new()
+            .with_prompt(format!("Really overwrite `{}`?", path.display()))
+            .default(false)
+            .interact()?;
+
+        if !sure {
+            std::process::exit(1);
+        }
+    }
+
+    let f = File::create(path)?;
+    Ok(f)
+}
+
 fn output_audio(path: Option<&Path>, score: &Score) -> Result<()> {
     if let Some(path) = path {
-        if path.exists() {
-            let sure = dialoguer::Confirm::new()
-                .with_prompt(format!("Really overwrite `{}`?", path.display()))
-                .default(false)
-                .interact()?;
-
-            if !sure {
-                std::process::exit(1);
-            }
-        }
-
-        let f = File::create(path)?;
-        write_wav(f, score)?;
+        write_wav(ask_before_overwriting(path)?, score)?;
     } else if atty::isnt(atty::Stream::Stdout) {
         write_wav(std::io::stdout(), score)?;
     } else {
