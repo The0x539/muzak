@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use muzak::types::Score;
+use wavers::WavHeader;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about)]
@@ -11,10 +12,10 @@ struct Args {
     #[command(subcommand)]
     command: Command,
 
-    #[arg(short)]
+    #[arg(short, global = true)]
     input_file: Option<PathBuf>,
 
-    #[arg(short)]
+    #[arg(short, global = true)]
     output_file: Option<PathBuf>,
 }
 
@@ -74,7 +75,7 @@ fn output_audio(path: Option<&Path>, score: &Score) -> Result<()> {
             }
         }
 
-        let f = File::create_new(path)?;
+        let f = File::create(path)?;
         write_wav(f, score)?;
     } else if atty::isnt(atty::Stream::Stdout) {
         write_wav(std::io::stdout(), score)?;
@@ -88,24 +89,22 @@ fn output_audio(path: Option<&Path>, score: &Score) -> Result<()> {
 fn write_wav(mut writer: impl Write, score: &Score) -> Result<()> {
     let source = muzak::mix(score);
 
-    // If there's only 1 channel, hound seems to put it on the left. Annoying.
-    let spec = hound::WavSpec {
-        channels: 2,
-        sample_rate: 48000,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    };
+    let mut samples: Vec<f32> = source.collect();
 
-    let mut buf = std::io::Cursor::new(Vec::new());
-
-    let mut wav = hound::WavWriter::new(&mut buf, spec)?;
-    for sample in source {
-        wav.write_sample(sample)?;
-        wav.write_sample(sample)?;
+    if cfg!(target_endian = "big") {
+        for sample in &mut samples {
+            *sample = f32::from_le_bytes(sample.to_be_bytes());
+        }
     }
-    wav.finalize()?;
 
-    writer.write_all(buf.get_ref())?;
+    let header = WavHeader::new_header::<f32>(48000, 1, samples.len())?;
+
+    let sample_bytes: &[u8] = bytemuck::cast_slice(&samples);
+
+    writer.write_all(&header.as_extended_bytes())?;
+    writer.write_all(b"data")?;
+    writer.write_all(&(sample_bytes.len() as u32).to_le_bytes())?;
+    writer.write_all(sample_bytes)?;
 
     Ok(())
 }
