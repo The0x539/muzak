@@ -16,7 +16,7 @@ pub fn compile(xml: &str) -> String {
     score.to_string()
 }
 
-pub mod extensions;
+mod extensions;
 use extensions::*;
 
 mod output;

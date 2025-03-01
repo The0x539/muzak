@@ -3,12 +3,14 @@ use types::Score;
 
 pub use rodio;
 
+mod compile;
 mod fmt;
 mod parse;
 
-pub mod compile;
 pub mod output;
 pub mod types;
+
+pub use compile::compile;
 
 use output::instruments;
 

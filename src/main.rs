@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use muzak::rodio::Source;
 use muzak::types::Score;
 
 #[derive(Parser, Debug, Clone)]
@@ -11,21 +10,18 @@ use muzak::types::Score;
 struct Args {
     #[command(subcommand)]
     command: Command,
+
+    #[arg(short)]
+    input_file: Option<PathBuf>,
+
+    #[arg(short)]
+    output_file: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone)]
 enum Command {
-    Compile {
-        musicxml_path: Option<PathBuf>,
-    },
-    Play {
-        score_path: Option<PathBuf>,
-    },
-    Render {
-        score_path: Option<PathBuf>,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
+    Compile,
+    Play,
 }
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
@@ -33,51 +29,25 @@ type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Resu
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    if let Command::Compile { musicxml_path } = args.command {
-        compile(musicxml_path.as_deref())?;
-        return Ok(());
-    }
-
-    let (Command::Play { score_path } | Command::Render { score_path, .. }) = &args.command else {
-        // TODO: Unify the play and render commands
-        unreachable!()
-    };
-    let score_text: String = match score_path {
-        None if atty::is(atty::Stream::Stdin) => {
-            eprintln!("Please specify an input path or use a redirect to pass data through stdin");
-            return Ok(());
-        }
-        None => {
-            let mut buf = String::new();
-            std::io::stdin().read_to_string(&mut buf)?;
-            buf
-        }
-        Some(path) => std::fs::read_to_string(path)?,
-    };
-
-    // winnow errors don't impl std::error::Error for some reason
-    let score = muzak::parse(&score_text).expect("Could not parse score");
+    let input = read_text(args.input_file.as_deref())?;
 
     match args.command {
-        Command::Play { .. } => muzak::play(&score),
-        Command::Render { output, .. } => {
-            let out_path = output.as_deref().unwrap_or("-".as_ref());
-            export(out_path, &score)?;
+        Command::Compile => {
+            let musicxml = read_text(args.input_file.as_deref())?;
+            let bells = muzak::compile(&musicxml);
+            println!("{bells}");
         }
-        _ => unreachable!(),
+        Command::Play => {
+            // winnow errors don't impl std::error::Error for some reason
+            let score = muzak::parse(&input).expect("Could not parse score");
+            output_audio(args.output_file.as_deref(), &score)?;
+        }
     }
 
     Ok(())
 }
 
-fn compile(path: Option<&Path>) -> Result<()> {
-    let musicxml = read_input(path)?;
-    let bells = muzak::compile::compile(&musicxml);
-    println!("{bells}");
-    Ok(())
-}
-
-fn read_input(path: Option<&Path>) -> Result<String> {
+fn read_text(path: Option<&Path>) -> Result<String> {
     if let Some(path) = path {
         let buf = std::fs::read_to_string(path)?;
         Ok(buf)
@@ -86,55 +56,38 @@ fn read_input(path: Option<&Path>) -> Result<String> {
         std::io::stdin().read_to_string(&mut buf)?;
         Ok(buf)
     } else {
-        eprintln!("Please specify an input path or use a redirect to pass data through stdin");
+        eprintln!("Please specify an input path or pipe data via stdin");
         std::process::exit(1);
     }
 }
 
-fn export(path: impl AsRef<Path>, score: &Score) -> Result<()> {
-    let source = muzak::mix(score);
-    let path = path.as_ref();
-    if path == Path::new("-") {
-        if atty::is(atty::Stream::Stdout) {
+fn output_audio(path: Option<&Path>, score: &Score) -> Result<()> {
+    if let Some(path) = path {
+        if path.exists() {
             let sure = dialoguer::Confirm::new()
-                .with_prompt("Really output WAVE data to terminal?")
+                .with_prompt(format!("Really overwrite `{}`?", path.display()))
                 .default(false)
                 .interact()?;
 
             if !sure {
-                return Ok(());
+                std::process::exit(1);
             }
         }
 
-        // hound's writer impl needs to seek back to the start to write the data length,
-        // so we can't just write directly to stdout without switching crates again
-        // TODO: use WavSpec::into_header_for_infinite_file in both cases
-        let mut buf = std::io::Cursor::new(Vec::new());
-        export_impl(&mut buf, source)?;
-        std::io::stdout().write_all(buf.get_ref())?;
+        let f = File::create_new(path)?;
+        write_wav(f, score)?;
+    } else if atty::isnt(atty::Stream::Stdout) {
+        write_wav(std::io::stdout(), score)?;
     } else {
-        if path.exists() {
-            let sure = dialoguer::Confirm::new()
-                .with_prompt(format!("Overwrite {}?", path.display()))
-                .default(true)
-                .interact()?;
-
-            if !sure {
-                return Ok(());
-            }
-        }
-
-        let file = std::io::BufWriter::new(File::create(path)?);
-        export_impl(file, source)?;
+        muzak::play(score);
     }
 
     Ok(())
 }
 
-fn export_impl<W: Write + std::io::Seek>(
-    writer: W,
-    source: impl Source<Item = f32>,
-) -> Result<(), hound::Error> {
+fn write_wav(mut writer: impl Write, score: &Score) -> Result<()> {
+    let source = muzak::mix(score);
+
     // If there's only 1 channel, hound seems to put it on the left. Annoying.
     let spec = hound::WavSpec {
         channels: 2,
@@ -142,11 +95,17 @@ fn export_impl<W: Write + std::io::Seek>(
         bits_per_sample: 32,
         sample_format: hound::SampleFormat::Float,
     };
-    let mut wav = hound::WavWriter::new(writer, spec)?;
+
+    let mut buf = std::io::Cursor::new(Vec::new());
+
+    let mut wav = hound::WavWriter::new(&mut buf, spec)?;
     for sample in source {
         wav.write_sample(sample)?;
         wav.write_sample(sample)?;
     }
     wav.finalize()?;
+
+    writer.write_all(buf.get_ref())?;
+
     Ok(())
 }

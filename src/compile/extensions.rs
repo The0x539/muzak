@@ -1,5 +1,6 @@
 use musicxml::datatypes::NoteTypeValue;
 
+#[allow(dead_code)]
 pub trait NoteTypeValueExt: Sized {
     fn double(&self) -> Self;
     fn half(&self) -> Self;
