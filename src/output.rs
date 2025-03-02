@@ -4,6 +4,10 @@ use std::time::Duration;
 pub trait Instrument {
     type Note: Source<Item = f32> + Send + 'static;
 
+    // Instruments without sustain can be mixed by just concatenating audio sources,
+    // which is significantly faster than the delay&sum approach.
+    const HAS_SUSTAIN: bool = false;
+
     fn play_note(frequency: f32, duration: Duration) -> Self::Note;
 
     fn play_chord(
@@ -23,24 +27,48 @@ pub trait Instrument {
         (chord, event_duration)
     }
 
-    // TODO: only use delay+chord style sequencing for instruments that actually need it,
-    // i.e., ones that apply sustain to notes. for instruments that don't, the more
-    // lightweight and straightforward from_iter approach works just fine
     fn play_part(part: &crate::types::Part, beat_duration: Duration) -> BoxSource<f32> {
-        let mut track = Chord::new();
-
-        let mut offset = Duration::ZERO;
-
-        for event in &part.events {
-            let (chord, event_duration) = Self::play_chord(event, beat_duration);
-            if !event.notes().is_empty() {
-                track.add(chord.delay(offset));
-            }
-            offset += event_duration;
+        if Self::HAS_SUSTAIN {
+            Box::new(play_part_with_sustain::<Self>(part, beat_duration))
+        } else {
+            Box::new(play_part_without_sustain::<Self>(part, beat_duration))
         }
-
-        Box::new(track.low_pass(1000).take_duration(offset))
     }
+}
+
+fn play_part_with_sustain<T: Instrument + ?Sized>(
+    part: &crate::types::Part,
+    beat_duration: Duration,
+) -> impl Source<Item = f32> + 'static {
+    let mut track = Chord::new();
+
+    let mut offset = Duration::ZERO;
+
+    for event in &part.events {
+        let (chord, event_duration) = T::play_chord(event, beat_duration);
+        if !event.notes().is_empty() {
+            track.add(chord.delay(offset));
+        }
+        offset += event_duration;
+    }
+
+    track.low_pass(1000)
+}
+
+fn play_part_without_sustain<T: Instrument + ?Sized>(
+    part: &crate::types::Part,
+    beat_duration: Duration,
+) -> impl Source<Item = f32> + 'static {
+    let mut events = vec![];
+
+    for event in &part.events {
+        let (chord, duration) = T::play_chord(event, beat_duration);
+        // Notes already adjust themselves to the necessary duration,
+        // but rests do not and would otherwise be infinite.
+        events.push(chord.take_duration(duration));
+    }
+
+    from_iter(events).low_pass(1000)
 }
 
 pub type BoxSource<T> = Box<dyn Source<Item = T> + Send + 'static>;
@@ -65,6 +93,11 @@ impl<I: Source<Item = f32>> Iterator for Chord<I> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.notes.is_empty() {
+            // No notes means a rest, which is silence, not no duration.
+            return Some(0.0);
+        }
+
         let mut any = false; // Is there any source still producing samples?
         let mut sum = 0.0;
         for note in &mut self.notes {

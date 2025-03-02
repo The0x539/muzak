@@ -44,6 +44,7 @@ impl Instrument for Beep {
 pub struct Bells;
 impl Instrument for Bells {
     type Note = TakeDuration<ApplyEffect<SignalGenerator, Dampen>>;
+    const HAS_SUSTAIN: bool = true;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Square, frequency)
