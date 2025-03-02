@@ -47,6 +47,8 @@ struct State {
     bpm: Option<(f64, u32)>,
     tie_already_used_this_note: bool,
     score: output::Score,
+    repeat_start: usize,
+    first_ending_length: usize,
 }
 
 impl State {
@@ -80,6 +82,7 @@ impl State {
                     }
                 }
                 MeasureElement::Backup(..) => break,
+                MeasureElement::Barline(b) => self.barline(b),
                 _ => {}
             }
         }
@@ -106,6 +109,38 @@ impl State {
                 self.bpm = Some((unit.as_float(), count));
             }
             m => panic!("unhandled metronome type {m:?}"),
+        }
+    }
+
+    fn barline(&mut self, barline: &Barline) {
+        if let Some(ending) = &barline.content.ending {
+            if ending.attributes.number.0 == "1" {
+                self.first_ending_length += 1;
+            }
+        }
+
+        if barline.attributes.location == Some(RightLeftMiddle::Left) {
+            if let Some(repeat) = &barline.content.repeat {
+                if repeat.attributes.direction == BackwardForward::Forward {
+                    self.repeat_start = self.score.last_part().measures.len() - 1;
+                }
+            }
+        } else if barline.attributes.location == Some(RightLeftMiddle::Right) {
+            if let Some(repeat) = &barline.content.repeat {
+                if repeat.attributes.direction == BackwardForward::Backward {
+                    self.score
+                        .last_part()
+                        .measures
+                        .extend_from_within(self.repeat_start..);
+
+                    // limited support for volta brackets
+                    // assumes only one repetition and nothing funky
+                    for _ in 0..self.first_ending_length {
+                        self.score.last_part().measures.pop();
+                    }
+                    self.first_ending_length = 0;
+                }
+            }
         }
     }
 
