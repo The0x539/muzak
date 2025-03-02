@@ -46,48 +46,43 @@ mod output;
 struct State {
     bpm: Option<(f64, u32)>,
     tie_already_used_this_note: bool,
+    score: output::Score,
 }
 
 impl State {
     fn score(&mut self, score: &ScorePartwise) -> output::Score {
-        let mut output = output::Score::default();
         for part in &score.content.part {
-            output.parts.push(self.part(part));
+            self.part(part);
         }
-        // TODO: get rid of this "state" altogether.
-        // problem is that bpm is specified with the measure, not the score,
-        // but we care about it score-wide
-        output.bpm = self.bpm.unwrap_or((0.25, 120)).1;
-        output
+        self.score.bpm = self.bpm.unwrap_or((0.25, 120)).1; // TODO: clean this up
+        std::mem::take(&mut self.score)
     }
 
-    fn part(&mut self, part: &Part) -> output::Part {
-        let mut output = output::Part::default();
+    fn part(&mut self, part: &Part) {
+        self.score.add_part();
         for element in &part.content {
             match &element {
-                PartElement::Measure(m) => output.measures.push(self.measure(m)),
+                PartElement::Measure(m) => self.measure(m),
                 _ => {}
             };
         }
-        output
     }
 
-    fn measure(&mut self, measure: &Measure) -> output::Measure {
-        let mut output = output::Measure::default();
+    fn measure(&mut self, measure: &Measure) {
+        self.score.add_measure();
         for element in &measure.content {
             match element {
                 MeasureElement::Direction(d) => self.direction(d),
-                MeasureElement::Note(n) => self.note(n, &mut output),
+                MeasureElement::Note(n) => self.note(n),
                 MeasureElement::Attributes(a) => {
                     if let Some(divisions) = &a.content.divisions {
-                        output.divisions = Some(divisions.content.0);
+                        self.score.last_measure().divisions = Some(divisions.content.0);
                     }
                 }
                 MeasureElement::Backup(..) => break,
                 _ => {}
             }
         }
-        output
     }
 
     fn direction(&mut self, direction: &Direction) {
@@ -114,7 +109,7 @@ impl State {
         }
     }
 
-    fn note(&mut self, note: &Note, output: &mut output::Measure) {
+    fn note(&mut self, note: &Note) {
         let NoteType::Normal(info) = &note.content.info else {
             println!("eep, non-normal note");
             return;
@@ -124,7 +119,7 @@ impl State {
 
         let AudibleType::Pitch(pitch) = info.audible else {
             assert!(matches!(info.audible, AudibleType::Rest(..)));
-            output.events.push(output::Event {
+            self.score.last_measure().push_event(output::Event {
                 duration,
                 notes: vec![],
             });
@@ -139,38 +134,39 @@ impl State {
 
         if info.tie.len() > 0 && info.tie[0].attributes.r#type == StartStop::Stop {
             assert_eq!(info.tie.len(), 1);
-            let Some(prev) = output.events.last_mut() else {
+
+            if let Some(prev) = self.score.last_measure().events.last_mut() {
+                assert!(
+                    prev.notes.contains(&output_note),
+                    "tie between different notes",
+                );
+                if !self.tie_already_used_this_note {
+                    prev.duration += duration;
+                    self.tie_already_used_this_note = true;
+                }
+            } else {
                 // This is the first note in the measure,
                 // and it's tied to the last note of the previous measure.
                 if !self.tie_already_used_this_note {
-                    output.carryover += duration;
+                    self.score.last_measure().carryover += duration;
                     self.tie_already_used_this_note = true;
                 }
-                return;
-            };
-            assert!(
-                prev.notes.contains(&output_note),
-                "tie between different notes",
-            );
-            if !self.tie_already_used_this_note {
-                prev.duration += duration;
-                self.tie_already_used_this_note = true;
             }
+
             return;
         } else {
             self.tie_already_used_this_note = false;
         }
 
         if info.chord.is_some() {
-            let prev = output.events.last_mut().unwrap();
+            let prev = self.score.last_measure().last_event();
             assert_eq!(prev.duration, duration);
             prev.notes.push(output_note);
-            return;
+        } else {
+            self.score.last_measure().push_event(output::Event {
+                duration,
+                notes: vec![output_note],
+            });
         }
-
-        output.events.push(output::Event {
-            duration,
-            notes: vec![output_note],
-        });
     }
 }

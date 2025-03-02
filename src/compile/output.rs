@@ -60,11 +60,37 @@ impl Score {
             }
         }
     }
+
+    pub fn add_part(&mut self) {
+        self.parts.push(Default::default())
+    }
+
+    pub fn last_part(&mut self) -> &mut Part {
+        self.parts.last_mut().unwrap()
+    }
+
+    pub fn last_measure(&mut self) -> &mut Measure {
+        self.last_part().last_measure()
+    }
+
+    pub fn add_measure(&mut self) {
+        self.last_part().add_measure()
+    }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Part {
     pub measures: Vec<Measure>,
+}
+
+impl Part {
+    pub fn add_measure(&mut self) {
+        self.measures.push(Default::default())
+    }
+
+    pub fn last_measure(&mut self) -> &mut Measure {
+        self.measures.last_mut().unwrap()
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -74,6 +100,16 @@ pub struct Measure {
     pub carryover: u32,
     pub events: Vec<Event>,
     pub divisions: Option<u32>,
+}
+
+impl Measure {
+    pub fn last_event(&mut self) -> &mut Event {
+        self.events.last_mut().unwrap()
+    }
+
+    pub fn push_event(&mut self, event: Event) {
+        self.events.push(event)
+    }
 }
 
 #[derive(Debug, Clone)]
