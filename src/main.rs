@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -33,10 +34,24 @@ enum Command {
         rotation: u8,
     },
     /// Convert bells-text to audio, either over speakers or as WAV data.
-    Play {
-        #[arg(short = 'd', long, value_name = "SECONDS")]
-        max_duration: Option<f64>,
-    },
+    Play(PlayOpts),
+}
+
+#[derive(Parser, Debug, Clone)]
+struct PlayOpts {
+    #[arg(short = 'd', long, value_name = "SECONDS")]
+    max_duration: Option<f64>,
+    #[arg(short = 't', long, value_name = "COUNT")]
+    max_tracks: Option<NonZeroUsize>,
+}
+
+impl From<PlayOpts> for muzak::MixOptions {
+    fn from(cli: PlayOpts) -> Self {
+        muzak::MixOptions {
+            max_duration: cli.max_duration.map(Duration::from_secs_f64),
+            max_tracks: cli.max_tracks,
+        }
+    }
 }
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
@@ -56,12 +71,10 @@ fn main() -> Result<()> {
                 println!("{bells}");
             }
         }
-        Command::Play { max_duration } => {
+        Command::Play(options) => {
             // winnow errors don't impl std::error::Error for some reason
             let score = muzak::parse(&input).expect("Could not parse score");
-
-            let max_duration = max_duration.map(Duration::from_secs_f64);
-            let (source, duration) = muzak::mix(&score, max_duration);
+            let (source, duration) = muzak::mix(&score, options.into());
             output_audio(args.output_file.as_deref(), source, duration)?;
         }
     }

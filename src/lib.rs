@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
 
 use rodio::Source;
 use types::Score;
@@ -25,15 +25,20 @@ pub fn parse(song_text: &str) -> Result<types::Score, ParseError<'_>> {
     winnow::Parser::parse(&mut parse::score, &mut { song_text })
 }
 
-pub fn mix(
-    score: &Score,
-    max_duration: Option<Duration>,
-) -> (impl Source<Item = f32> + 'static, Duration) {
+#[derive(Debug, Copy, Clone)]
+pub struct MixOptions {
+    pub max_duration: Option<Duration>,
+    pub max_tracks: Option<NonZeroUsize>,
+}
+
+pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'static, Duration) {
     let beat = score.beat_duration();
 
     let mut mixer = output::Chord::new();
 
-    for (i, part) in score.parts.iter().enumerate() {
+    let track_limit = options.max_tracks.map_or(usize::MAX, |n| n.get());
+
+    for (i, part) in score.parts.iter().enumerate().take(track_limit) {
         let play_fn = match i {
             0 => instruments::Beep::play_part,
             1.. => instruments::Keyboard::play_part,
@@ -42,7 +47,11 @@ pub fn mix(
     }
 
     let desired_duration = beat * score.beat_count();
-    let true_duration = max_duration.unwrap_or(Duration::MAX).min(desired_duration);
+    let true_duration = options
+        .max_duration
+        .unwrap_or(Duration::MAX)
+        .min(desired_duration);
+
     // At the time of writing, rodio is not designed such that take_duration on
     // an infinite source can correctly report its finite and guaranteed duration.
     // This is exactly what we do to construct individual notes/chords,
