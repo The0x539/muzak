@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -86,7 +86,7 @@ fn read_text(path: Option<&Path>) -> Result<String> {
     if let Some(path) = path {
         let buf = std::fs::read_to_string(path)?;
         Ok(buf)
-    } else if atty::isnt(atty::Stream::Stdin) {
+    } else if !std::io::stdin().is_terminal() {
         let mut buf = String::new();
         std::io::stdin().read_to_string(&mut buf)?;
         Ok(buf)
@@ -119,7 +119,7 @@ fn output_audio(
 ) -> Result<()> {
     if let Some(path) = path {
         write_wav(ask_before_overwriting(path)?, source)?;
-    } else if atty::isnt(atty::Stream::Stdout) {
+    } else if !std::io::stdout().is_terminal() {
         write_wav(std::io::stdout(), source)?;
     } else {
         muzak::play(source, duration);
