@@ -2,6 +2,8 @@
 // Its craftsmanship is inferior to that of the rest of muzak-rs.
 // Perhaps one day its data structures shall be unified with those of the parsing/playback phase.
 
+use std::collections::HashMap;
+
 use musicxml::datatypes::*;
 use musicxml::elements::*;
 
@@ -12,8 +14,11 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
     let mut state = State::default();
     let mut score = state.score(&mxml);
 
-    score.unify_divisions();
+    let divisions = score.unify_divisions();
     score.fix_carryover_chords();
+
+    // I have no idea how right or wrong this is.
+    score.bpm = (score.bpm * divisions) / 4;
 
     for _ in 0..padding {
         score.parts.insert(0, empty_part());
@@ -49,6 +54,11 @@ struct State {
     score: output::Score,
     repeat_start: usize,
     first_ending_length: usize,
+    // Associates measure numbers with ending numbers.
+    // The purpose of this is to persist across parts,
+    // as only the first part seems to actually get the volta,
+    // even though it affects all the parts.
+    volta_memory: HashMap<String, String>,
 }
 
 impl State {
@@ -62,6 +72,9 @@ impl State {
 
     fn part(&mut self, part: &Part) {
         self.score.add_part();
+        self.repeat_start = 0;
+        self.first_ending_length = 0;
+
         for element in &part.content {
             match &element {
                 PartElement::Measure(m) => self.measure(m),
@@ -82,7 +95,7 @@ impl State {
                     }
                 }
                 MeasureElement::Backup(..) => break,
-                MeasureElement::Barline(b) => self.barline(b),
+                MeasureElement::Barline(b) => self.barline(b, &measure.attributes.number.0),
                 _ => {}
             }
         }
@@ -112,11 +125,12 @@ impl State {
         }
     }
 
-    fn barline(&mut self, barline: &Barline) {
+    fn barline(&mut self, barline: &Barline, measure_number: &str) {
         if let Some(ending) = &barline.content.ending {
-            if ending.attributes.number.0 == "1" {
-                self.first_ending_length += 1;
-            }
+            self.volta_memory.insert(
+                measure_number.to_owned(),
+                ending.attributes.number.0.clone(),
+            );
         }
 
         if barline.attributes.location == Some(RightLeftMiddle::Left) {
@@ -126,6 +140,14 @@ impl State {
                 }
             }
         } else if barline.attributes.location == Some(RightLeftMiddle::Right) {
+            if self
+                .volta_memory
+                .get(measure_number)
+                .is_some_and(|n| n == "1")
+            {
+                self.first_ending_length += 1;
+            }
+
             if let Some(repeat) = &barline.content.repeat {
                 if repeat.attributes.direction == BackwardForward::Backward {
                     self.score
