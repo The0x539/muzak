@@ -43,12 +43,13 @@ impl Instrument for Beep {
 // (cons 'bells (muzak/make-instrument :waveform 'square :effects '(dampen) :sustain 4))
 pub struct Bells;
 impl Instrument for Bells {
-    type Note = TakeDuration<ApplyEffect<SignalGenerator, Dampen>>;
+    type Note = TakeDuration<Amplify<ApplyEffect<SignalGenerator, Dampen>>>;
     const HAS_SUSTAIN: bool = true;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Square, frequency)
             .with_effect(Dampen)
+            .amplify(0.4)
             .take_duration(duration + Duration::from_secs(4))
     }
 }
