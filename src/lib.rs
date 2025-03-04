@@ -39,9 +39,15 @@ pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'st
     let track_limit = options.max_tracks.map_or(usize::MAX, |n| n.get());
 
     for (i, part) in score.parts.iter().enumerate().take(track_limit) {
-        let play_fn = match i {
-            0 => instruments::Beep::play_part,
-            1.. => instruments::Keyboard::play_part,
+        let play_fn = match match part.instrument {
+            Some(x) => x,
+            None if i == 0 => types::Instrument::Beep,
+            None => types::Instrument::Keyboard,
+        } {
+            types::Instrument::Beep => instruments::Beep::play_part,
+            types::Instrument::Keyboard => instruments::Keyboard::play_part,
+            types::Instrument::Bell => instruments::Bells::play_part,
+            types::Instrument::Waterphone => instruments::Waterphone::play_part,
         };
         mixer.add(play_fn(part, beat));
     }

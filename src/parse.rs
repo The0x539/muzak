@@ -56,9 +56,20 @@ pub fn event(input: &mut &str) -> Result<Event> {
     .parse_next(input)
 }
 
+pub fn instrument(input: &mut &str) -> Result<Instrument> {
+    alt((
+        '∿'.value(Instrument::Beep),
+        '🎹'.value(Instrument::Keyboard),
+        '🔔'.value(Instrument::Bell),
+        '🌊'.value(Instrument::Waterphone),
+    ))
+    .parse_next(input)
+}
+
 pub fn part(input: &mut &str) -> Result<Part> {
+    let instrument = opt(terminated(instrument, junk)).parse_next(input)?;
     repeat(0.., terminated(event, junk))
-        .map(|events| Part { events })
+        .map(|events| Part { instrument, events })
         .parse_next(input)
 }
 
@@ -71,8 +82,23 @@ pub fn score(input: &mut &str) -> Result<Score> {
     .parse_next(input)
 }
 
+// Rather than only accepting whitespace between stuff,
+// ignore any characters that aren't recognized at all.
+// This makes implementation a decent bit more difficult,
+// but it makes it easier to add visual markers to a file.
 fn junk(input: &mut &str) -> Result<()> {
-    take_till(0.., b"ABCDEFGabcdefg0123456789|[/~")
+    const NOT_JUNK: &str = concat!(
+        // Notes
+        "ABCDEFG",
+        "abcdefg",
+        // BPM
+        "0123456789",
+        // Part dividers, chords, rests, and note-extensions on new lines
+        "|[/~",
+        // Instruments
+        "∿🎹🔔🌊",
+    );
+    take_till(0.., |c| NOT_JUNK.contains(c))
         .void()
         .parse_next(input)
 }

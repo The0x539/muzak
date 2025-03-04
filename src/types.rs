@@ -20,6 +20,7 @@ impl Score {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Part {
+    pub instrument: Option<Instrument>,
     pub events: Vec<Event>,
 }
 
@@ -27,6 +28,14 @@ impl Part {
     pub fn beat_count(&self) -> u32 {
         self.events.iter().map(|e| e.beat_count()).sum()
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Instrument {
+    Beep,
+    Keyboard,
+    Bell,
+    Waterphone,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
