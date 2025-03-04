@@ -36,6 +36,7 @@ fn empty_part() -> output::Part {
             events: vec![output::Event {
                 duration: 1,
                 notes: vec![],
+                staccato: false,
             }],
             ..Default::default()
         }],
@@ -179,6 +180,7 @@ impl State {
             self.score.last_measure().push_event(output::Event {
                 duration,
                 notes: vec![],
+                staccato: false,
             });
             return;
         };
@@ -190,6 +192,8 @@ impl State {
         };
 
         if info.tie.len() > 0 && info.tie[0].attributes.r#type == StartStop::Stop {
+            // just gonna assume no tied staccato notes for now
+
             assert_eq!(info.tie.len(), 1);
 
             if let Some(prev) = self.score.last_measure().events.last_mut() {
@@ -223,7 +227,23 @@ impl State {
             self.score.last_measure().push_event(output::Event {
                 duration,
                 notes: vec![output_note],
+                staccato: false,
             });
+        }
+
+        let mut articulations = note
+            .content
+            .notations
+            .iter()
+            .flat_map(|n| &n.content.notations)
+            .filter_map(|t| match t {
+                NotationContentTypes::Articulations(a) => Some(a),
+                _ => None,
+            })
+            .flat_map(|a| &a.content);
+
+        if articulations.any(|a| matches!(a, ArticulationsType::Staccato(_))) {
+            self.score.last_measure().last_event().staccato = true;
         }
     }
 }

@@ -116,6 +116,7 @@ impl Measure {
 pub struct Event {
     pub duration: u32,
     pub notes: Vec<Note>,
+    pub staccato: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -164,15 +165,24 @@ impl Display for Note {
 
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut duration = self.duration;
+        if self.staccato {
+            assert_eq!(
+                duration % 2,
+                0,
+                "TODO: get staccato working in cases like this"
+            );
+            duration /= 2;
+        }
         match &self.notes[..] {
             [/* rest */] => {
-                for _ in 0..self.duration {
+                for _ in 0..duration {
                     f.write_char('/')?;
                 }
             }
             [note] => {
                 write!(f, "{note}")?;
-                for _ in 1..self.duration {
+                for _ in 1..duration {
                     f.write_char('~')?;
                 }
             }
@@ -181,10 +191,15 @@ impl Display for Event {
                 for note in chord {
                     write!(f, "{note}")?;
                 }
-                for _ in 1..self.duration {
+                for _ in 1..duration {
                     f.write_char('~')?;
                 }
                 f.write_char(']')?;
+            }
+        }
+        if self.staccato {
+            for _ in 0..duration {
+                f.write_char('/')?;
             }
         }
         Ok(())
