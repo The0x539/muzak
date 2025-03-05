@@ -7,6 +7,92 @@ use winnow::{Parser, Result};
 
 use crate::types::*;
 
+macro_rules! parsers {
+    ($(
+        $vis:vis $name:ident : $ty:ty = $body:expr;
+    )*) => {$(
+        $vis fn $name(input: &mut &str) -> winnow::Result<$ty> {
+            $body.parse_next(input)
+        }
+    )*}
+}
+
+macro_rules! literals {
+    (
+        $ty:ty;
+        $($lit:literal => $variant:ident),*$(,)?
+    ) => {
+        alt((
+            $($lit.value(<$ty>::$variant),)*
+        ))
+    }
+}
+
+parsers! {
+    pub accidental: Accidental = literals! {
+        Accidental;
+        '♭' => Flat,
+        '♮' => Natural,
+        '♯' => Sharp,
+        '#' => Sharp,
+    };
+
+    pub note: Note = seq! {Note{
+        base: base_note,
+        accidental: opt(accidental),
+        octave: opt(integer),
+        duration: repeat(0.., preceded(junk, '~')).map(|n: usize| n as u32 + 1),
+    }};
+
+    pub event: Event = alt((
+        '/'.value(Event::Rest),
+        note.map(Event::Note),
+        delimited('[', repeat(0.., note), ']').map(Event::Chord),
+    ));
+
+    pub dynamic: Dynamic = literals! {
+        Dynamic;
+        "𝓹𝓹" => Pianissimo,
+        "𝓯𝓯" => Fortissimo,
+        "𝓶𝓹" => MezzoPiano,
+        "𝓶𝓯" => MezzoForte,
+        "𝓹" => Piano,
+        "𝓯" => Forte,
+    };
+
+    pub part_item: PartItem = alt((
+        event.map(PartItem::Event),
+        // a dynamic MUST have whitespace or something after it,
+        // so as to avoid cases such as 𝓯𝓯𝓯𝓯 being interpreted as two consecutive fortissimos
+        terminated(dynamic, junk).map(PartItem::Dynamic),
+    ));
+
+    pub instrument: Instrument = literals! {
+        Instrument;
+        '∿' => Beep,
+        '🎹' => Keyboard,
+        '🔔' => Bell,
+        '🌊' => Waterphone,
+    };
+
+    pub part: Part =  seq! {Part{
+        instrument: opt(terminated(instrument, junk)),
+        items: repeat(0.., terminated(part_item, junk)),
+    }};
+
+    pub score: Score = seq! {Score{
+        _: junk,
+        bpm: opt(integer),
+        parts: separated(0.., preceded(junk, part), '|'),
+    }};
+
+    // Rather than only accepting whitespace between stuff,
+    // ignore any characters that aren't recognized at all.
+    // This makes implementation a decent bit more difficult,
+    // but it makes it easier to add visual markers to a file.
+    junk: () = take_till(0.., |c| NOT_JUNK.contains(c)).void();
+}
+
 pub fn base_note(input: &mut &str) -> Result<BaseNote> {
     let letter = one_of(b"ABCDEFGabcdefg").parse_next(input)?;
 
@@ -15,15 +101,6 @@ pub fn base_note(input: &mut &str) -> Result<BaseNote> {
     let high = letter.is_ascii_lowercase();
 
     Ok(BaseNote { note, high })
-}
-
-pub fn accidental(input: &mut &str) -> Result<Accidental> {
-    alt((
-        '♭'.value(Accidental::Flat),
-        '♮'.value(Accidental::Natural),
-        one_of(['#', '♯']).value(Accidental::Sharp),
-    ))
-    .parse_next(input)
 }
 
 pub fn integer<T: FromStr>(input: &mut &str) -> Result<T>
@@ -37,85 +114,16 @@ where
         .parse_next(input)
 }
 
-pub fn note(input: &mut &str) -> Result<Note> {
-    seq! {Note{
-        base: base_note,
-        accidental: opt(accidental),
-        octave: opt(integer),
-        duration: repeat(0.., preceded(junk, '~')).map(|n: usize| n as u32 + 1),
-    }}
-    .parse_next(input)
-}
-
-pub fn event(input: &mut &str) -> Result<Event> {
-    alt((
-        '/'.value(Event::Rest),
-        note.map(Event::Note),
-        delimited('[', repeat(0.., note), ']').map(Event::Chord),
-    ))
-    .parse_next(input)
-}
-
-pub fn dynamic(input: &mut &str) -> Result<Dynamic> {
-    alt((
-        "𝓹𝓹".value(Dynamic::Pianissimo),
-        "𝓹".value(Dynamic::Piano),
-        "𝓶𝓹".value(Dynamic::MezzoPiano),
-        "𝓶𝓯".value(Dynamic::MezzoForte),
-        "𝓯".value(Dynamic::Forte),
-        "𝓯𝓯".value(Dynamic::Fortissimo),
-    ))
-    .parse_next(input)
-}
-
-pub fn part_item(input: &mut &str) -> Result<PartItem> {
-    alt((event.map(PartItem::Event), dynamic.map(PartItem::Dynamic))).parse_next(input)
-}
-
-pub fn instrument(input: &mut &str) -> Result<Instrument> {
-    alt((
-        '∿'.value(Instrument::Beep),
-        '🎹'.value(Instrument::Keyboard),
-        '🔔'.value(Instrument::Bell),
-        '🌊'.value(Instrument::Waterphone),
-    ))
-    .parse_next(input)
-}
-
-pub fn part(input: &mut &str) -> Result<Part> {
-    let instrument = opt(terminated(instrument, junk)).parse_next(input)?;
-    repeat(0.., terminated(part_item, junk))
-        .map(|items| Part { instrument, items })
-        .parse_next(input)
-}
-
-pub fn score(input: &mut &str) -> Result<Score> {
-    seq! {Score{
-        _: junk,
-        bpm: opt(integer),
-        parts: separated(0.., preceded(junk, part), '|'),
-    }}
-    .parse_next(input)
-}
-
-// Rather than only accepting whitespace between stuff,
-// ignore any characters that aren't recognized at all.
-// This makes implementation a decent bit more difficult,
-// but it makes it easier to add visual markers to a file.
-fn junk(input: &mut &str) -> Result<()> {
-    const NOT_JUNK: &str = concat!(
-        // Notes
-        "ABCDEFG",
-        "abcdefg",
-        // BPM
-        "0123456789",
-        // Part dividers, chords, rests, and note-extensions on new lines
-        "|[/~",
-        // Instruments
-        "∿🎹🔔🌊",
-        "𝓯"
-    );
-    take_till(0.., |c| NOT_JUNK.contains(c))
-        .void()
-        .parse_next(input)
-}
+const NOT_JUNK: &str = concat!(
+    // Notes
+    "ABCDEFG",
+    "abcdefg",
+    // BPM
+    "0123456789",
+    // Part dividers, chords, rests, and note-extensions on new lines
+    "|[/~",
+    // Instruments
+    "∿🎹🔔🌊",
+    // Dynamics
+    "𝓹𝓶𝓯"
+);
