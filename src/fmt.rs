@@ -20,7 +20,11 @@ impl Display for BaseNote {
 
 impl Display for Accidental {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let c = ['♭', '♮', '♯'][*self as usize];
+        let c = match self {
+            Accidental::Flat => '♭',
+            Accidental::Natural => '♮',
+            Accidental::Sharp => '♯',
+        };
         f.write_char(c)
     }
 }
