@@ -37,7 +37,7 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
 fn empty_part() -> output::Part {
     let mut part = output::Part::default();
     part.measures.push(Default::default());
-    part.measures[0].events.push(Default::default());
+    part.measures[0].push_event(Default::default());
     part
 }
 
@@ -118,6 +118,23 @@ impl State {
         for ty in &direction.content.direction_type {
             match &ty.content {
                 DirectionTypeContents::Metronome(m) => self.metronome(m),
+                DirectionTypeContents::Dynamics(d) => {
+                    for dynamic in d.iter().flat_map(|d| &d.content) {
+                        let output_dynamic = match dynamic {
+                            DynamicsType::Pp(_) => output::Dynamic::Pianissimo,
+                            DynamicsType::P(_) => output::Dynamic::Piano,
+                            DynamicsType::Mp(_) => output::Dynamic::MezzoPiano,
+                            DynamicsType::Mf(_) => output::Dynamic::MezzoForte,
+                            DynamicsType::F(_) => output::Dynamic::Forte,
+                            DynamicsType::Ff(_) => output::Dynamic::Fortissimo,
+                            _ => panic!("Unsupported dynamic: {dynamic:?}"),
+                        };
+                        self.score
+                            .last_measure()
+                            .items
+                            .push(output::MeasureItem::Dynamic(output_dynamic));
+                    }
+                }
                 _ => {}
             }
         }
@@ -206,7 +223,7 @@ impl State {
         if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
             // just gonna assume no tied staccato notes for now
 
-            if let Some(prev) = self.score.last_measure().events.last_mut() {
+            if let Some(prev) = self.score.last_measure().try_last_event() {
                 assert!(
                     prev.notes.contains(&output_note),
                     "new note introduced at end of tie",

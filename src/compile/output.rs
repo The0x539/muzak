@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, Write};
 
 use musicxml::datatypes::Step;
+use strum::IntoStaticStr;
 
 #[derive(Debug, Default, Clone)]
 pub struct Score {
@@ -27,7 +28,7 @@ impl Score {
                     *n = max;
                 };
 
-                for event in &mut measure.events {
+                for event in measure.events() {
                     event.duration *= ratio;
                 }
             }
@@ -43,8 +44,7 @@ impl Score {
                     unreachable!()
                 };
 
-                let prev_event = prev.events.last_mut().unwrap();
-
+                let prev_event = prev.last_event();
                 if prev_event.notes.len() <= 1 {
                     // not a chord, so we don't care
                     continue;
@@ -100,7 +100,7 @@ impl Part {
         for note in self
             .measures
             .iter_mut()
-            .flat_map(|m| &mut m.events)
+            .flat_map(|m| m.events())
             .flat_map(|e| &mut e.notes)
         {
             note.octave += transpose.octave;
@@ -121,18 +121,52 @@ pub struct Measure {
     /// The duration of the note at the start of the measure,
     /// if that note is tied to the end of the previous measure.
     pub carryover: u32,
-    pub events: Vec<Event>,
+    pub items: Vec<MeasureItem>,
     pub divisions: Option<u32>,
 }
 
 impl Measure {
+    pub fn events(&mut self) -> impl DoubleEndedIterator<Item = &mut Event> {
+        self.items.iter_mut().filter_map(|item| match item {
+            MeasureItem::Event(event) => Some(event),
+            _ => None,
+        })
+    }
+
     pub fn last_event(&mut self) -> &mut Event {
-        self.events.last_mut().unwrap()
+        self.try_last_event().unwrap()
+    }
+
+    pub fn try_last_event(&mut self) -> Option<&mut Event> {
+        self.events().next_back()
     }
 
     pub fn push_event(&mut self, event: Event) {
-        self.events.push(event)
+        self.items.push(MeasureItem::Event(event))
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum MeasureItem {
+    Event(Event),
+    Dynamic(Dynamic),
+}
+
+#[derive(Debug, Default, Copy, Clone, IntoStaticStr)]
+pub enum Dynamic {
+    #[strum(to_string = "𝓹𝓹")]
+    Pianissimo,
+    #[strum(to_string = "𝓹")]
+    Piano,
+    #[strum(to_string = "𝓶𝓹")]
+    MezzoPiano,
+    #[default]
+    #[strum(to_string = "𝓶𝓯")]
+    MezzoForte,
+    #[strum(to_string = "𝓯")]
+    Forte,
+    #[strum(to_string = "𝓯𝓯")]
+    Fortissimo,
 }
 
 #[derive(Debug, Clone)]
@@ -286,16 +320,25 @@ impl Display for Event {
     }
 }
 
+impl Display for MeasureItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MeasureItem::Event(x) => x.fmt(f),
+            MeasureItem::Dynamic(x) => f.write_str(x.into()),
+        }
+    }
+}
+
 impl Display for Measure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for _ in 0..self.carryover {
             f.write_char('~')?;
         }
-        for (i, event) in self.events.iter().enumerate() {
+        for (i, item) in self.items.iter().enumerate() {
             if i > 0 || self.carryover > 0 {
                 f.write_char(' ')?;
             }
-            write!(f, "{event}")?;
+            write!(f, "{item}")?;
         }
         Ok(())
     }
