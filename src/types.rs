@@ -21,12 +21,19 @@ impl Score {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Part {
     pub instrument: Option<Instrument>,
-    pub events: Vec<Event>,
+    pub items: Vec<PartItem>,
 }
 
 impl Part {
+    pub fn events(&self) -> impl Iterator<Item = &Event> {
+        self.items.iter().filter_map(|item| match item {
+            PartItem::Event(e) => Some(e),
+            _ => None,
+        })
+    }
+
     pub fn beat_count(&self) -> u32 {
-        self.events.iter().map(|e| e.beat_count()).sum()
+        self.events().map(|e| e.beat_count()).sum()
     }
 }
 
@@ -37,6 +44,14 @@ pub enum Instrument {
     Bell,
     Waterphone,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PartItem {
+    Event(Event),
+    Dynamic(Dynamic),
+}
+
+pub use crate::compile::output::Dynamic;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {

@@ -56,6 +56,22 @@ pub fn event(input: &mut &str) -> Result<Event> {
     .parse_next(input)
 }
 
+pub fn dynamic(input: &mut &str) -> Result<Dynamic> {
+    alt((
+        "𝓹𝓹".value(Dynamic::Pianissimo),
+        "𝓹".value(Dynamic::Piano),
+        "𝓶𝓹".value(Dynamic::MezzoPiano),
+        "𝓶𝓯".value(Dynamic::MezzoForte),
+        "𝓯".value(Dynamic::Forte),
+        "𝓯𝓯".value(Dynamic::Fortissimo),
+    ))
+    .parse_next(input)
+}
+
+pub fn part_item(input: &mut &str) -> Result<PartItem> {
+    alt((event.map(PartItem::Event), dynamic.map(PartItem::Dynamic))).parse_next(input)
+}
+
 pub fn instrument(input: &mut &str) -> Result<Instrument> {
     alt((
         '∿'.value(Instrument::Beep),
@@ -68,8 +84,8 @@ pub fn instrument(input: &mut &str) -> Result<Instrument> {
 
 pub fn part(input: &mut &str) -> Result<Part> {
     let instrument = opt(terminated(instrument, junk)).parse_next(input)?;
-    repeat(0.., terminated(event, junk))
-        .map(|events| Part { instrument, events })
+    repeat(0.., terminated(part_item, junk))
+        .map(|items| Part { instrument, items })
         .parse_next(input)
 }
 
@@ -97,6 +113,7 @@ fn junk(input: &mut &str) -> Result<()> {
         "|[/~",
         // Instruments
         "∿🎹🔔🌊",
+        "𝓯"
     );
     take_till(0.., |c| NOT_JUNK.contains(c))
         .void()

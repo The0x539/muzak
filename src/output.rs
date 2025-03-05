@@ -1,6 +1,8 @@
 use rodio::source::*;
 use std::time::Duration;
 
+use crate::types::PartItem;
+
 pub trait Instrument {
     type Note: Source<Item = f32> + Send + 'static;
 
@@ -44,12 +46,19 @@ fn play_part_with_sustain<T: Instrument + ?Sized>(
 
     let mut offset = Duration::ZERO;
 
-    for event in &part.events {
-        let (chord, event_duration) = T::play_chord(event, beat_duration);
-        if !event.notes().is_empty() {
-            track.add(chord.delay(offset));
+    for item in &part.items {
+        match item {
+            PartItem::Event(event) => {
+                let (chord, event_duration) = T::play_chord(event, beat_duration);
+                if !event.notes().is_empty() {
+                    track.add(chord.delay(offset));
+                }
+                offset += event_duration;
+            }
+            PartItem::Dynamic(_dynamic) => {
+                // TODO
+            }
         }
-        offset += event_duration;
     }
 
     track.low_pass(1000)
@@ -61,11 +70,18 @@ fn play_part_without_sustain<T: Instrument + ?Sized>(
 ) -> impl Source<Item = f32> + 'static {
     let mut events = vec![];
 
-    for event in &part.events {
-        let (chord, duration) = T::play_chord(event, beat_duration);
-        // Notes already adjust themselves to the necessary duration,
-        // but rests do not and would otherwise be infinite.
-        events.push(chord.take_duration(duration));
+    for item in &part.items {
+        match item {
+            PartItem::Event(event) => {
+                let (chord, duration) = T::play_chord(event, beat_duration);
+                // Notes already adjust themselves to the necessary duration,
+                // but rests do not and would otherwise be infinite.
+                events.push(chord.take_duration(duration));
+            }
+            PartItem::Dynamic(_dynamic) => {
+                // TODO
+            }
+        }
     }
 
     from_iter(events).low_pass(1000)

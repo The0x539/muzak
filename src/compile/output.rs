@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter, Write};
 
 use musicxml::datatypes::Step;
-use strum::IntoStaticStr;
+use strum::{EnumCount, IntoStaticStr, VariantArray};
 
 #[derive(Debug, Default, Clone)]
 pub struct Score {
@@ -152,7 +152,7 @@ pub enum MeasureItem {
     Dynamic(Dynamic),
 }
 
-#[derive(Debug, Default, Copy, Clone, IntoStaticStr)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, IntoStaticStr, VariantArray, EnumCount)]
 pub enum Dynamic {
     #[strum(to_string = "𝓹𝓹")]
     Pianissimo,

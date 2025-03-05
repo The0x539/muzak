@@ -44,7 +44,7 @@ fn empty_part() -> output::Part {
 mod extensions;
 use extensions::*;
 
-mod output;
+pub(crate) mod output;
 
 #[derive(Default)]
 struct State {
