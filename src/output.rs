@@ -43,21 +43,19 @@ fn play_part_with_sustain<T: Instrument + ?Sized>(
     beat_duration: Duration,
 ) -> impl Source<Item = f32> + 'static {
     let mut track = Chord::new();
-
     let mut offset = Duration::ZERO;
+    let mut volume = 1.0;
 
     for item in &part.items {
         match item {
             PartItem::Event(event) => {
                 let (chord, event_duration) = T::play_chord(event, beat_duration);
                 if !event.notes().is_empty() {
-                    track.add(chord.delay(offset));
+                    track.add(chord.amplify(volume).delay(offset));
                 }
                 offset += event_duration;
             }
-            PartItem::Dynamic(_dynamic) => {
-                // TODO
-            }
+            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier(),
         }
     }
 
@@ -70,17 +68,17 @@ fn play_part_without_sustain<T: Instrument + ?Sized>(
 ) -> impl Source<Item = f32> + 'static {
     let mut events = vec![];
 
+    let mut volume = 1.0;
+
     for item in &part.items {
         match item {
             PartItem::Event(event) => {
                 let (chord, duration) = T::play_chord(event, beat_duration);
                 // Notes already adjust themselves to the necessary duration,
                 // but rests do not and would otherwise be infinite.
-                events.push(chord.take_duration(duration));
+                events.push(chord.amplify(volume).take_duration(duration));
             }
-            PartItem::Dynamic(_dynamic) => {
-                // TODO
-            }
+            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier(),
         }
     }
 

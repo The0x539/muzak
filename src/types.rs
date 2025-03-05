@@ -53,6 +53,21 @@ pub enum PartItem {
 
 pub use crate::compile::output::Dynamic;
 
+impl Dynamic {
+    pub fn to_multiplier(self) -> f32 {
+        let ratio = 2.0_f32.sqrt();
+        let pow = match self {
+            Self::Pianissimo => -3,
+            Self::Piano => -2,
+            Self::MezzoPiano => -1,
+            Self::MezzoForte => 0, // 1x volume
+            Self::Forte => 1,
+            Self::Fortissimo => 2,
+        };
+        ratio.powi(pow)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     Rest,
