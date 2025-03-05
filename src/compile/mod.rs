@@ -51,7 +51,6 @@ mod output;
 #[derive(Default)]
 struct State {
     bpm: Option<(f64, u32)>,
-    tie_already_used_this_note: bool,
     score: output::Score,
     repeat_start: usize,
     first_ending_length: usize,
@@ -191,37 +190,35 @@ impl State {
             octave: pitch.content.octave.content.0,
         };
 
-        if info.tie.len() > 0 && info.tie[0].attributes.r#type == StartStop::Stop {
+        if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
             // just gonna assume no tied staccato notes for now
-
-            assert_eq!(info.tie.len(), 1);
 
             if let Some(prev) = self.score.last_measure().events.last_mut() {
                 assert!(
                     prev.notes.contains(&output_note),
-                    "tie between different notes",
+                    "new note introduced at end of tie",
                 );
-                if !self.tie_already_used_this_note {
+                if info.chord.is_none() {
                     prev.duration += duration;
-                    self.tie_already_used_this_note = true;
                 }
             } else {
                 // This is the first note in the measure,
                 // and it's tied to the last note of the previous measure.
-                if !self.tie_already_used_this_note {
+                if info.chord.is_none() {
+                    // "Carryover" is mostly an artifact of an earlier design,
+                    // but it does still allow us to put the carryover tildes on the new measure's line.
                     self.score.last_measure().carryover += duration;
-                    self.tie_already_used_this_note = true;
                 }
             }
-
             return;
-        } else {
-            self.tie_already_used_this_note = false;
         }
 
         if info.chord.is_some() {
             let prev = self.score.last_measure().last_event();
-            assert_eq!(prev.duration, duration);
+            assert_eq!(
+                prev.duration, duration,
+                "chord with notes of different duration"
+            );
             prev.notes.push(output_note);
         } else {
             self.score.last_measure().push_event(output::Event {
