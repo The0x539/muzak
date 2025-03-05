@@ -44,14 +44,14 @@ impl Score {
                     unreachable!()
                 };
 
-                let prev_event = prev.last_event();
-                if prev_event.notes.len() <= 1 {
-                    // not a chord, so we don't care
+                if cur.carryover == 0 {
+                    // not a tied note, so we don't care
                     continue;
                 }
 
-                if cur.carryover == 0 {
-                    // not a tied note, so we don't care
+                let prev_event = prev.last_event();
+                if prev_event.notes.len() <= 1 {
+                    // not a chord, so we don't care
                     continue;
                 }
 
