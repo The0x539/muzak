@@ -80,9 +80,9 @@ impl Score {
 
 #[derive(Debug, Default, Clone)]
 pub struct Part {
+    pub transpose: Option<Transpose>,
     pub measures: Vec<Measure>,
 }
-
 impl Part {
     pub fn add_measure(&mut self) {
         self.measures.push(Default::default())
@@ -91,6 +91,29 @@ impl Part {
     pub fn last_measure(&mut self) -> &mut Measure {
         self.measures.last_mut().unwrap()
     }
+
+    pub fn apply_transpose(&mut self) {
+        let Some(transpose) = self.transpose.take() else {
+            return;
+        };
+
+        for note in self
+            .measures
+            .iter_mut()
+            .flat_map(|m| &mut m.events)
+            .flat_map(|e| &mut e.notes)
+        {
+            note.octave += transpose.octave;
+            note.semitone += transpose.chromatic;
+            *note = note.normalized();
+        }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Transpose {
+    pub chromatic: i16,
+    pub octave: i16,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -119,11 +142,68 @@ pub struct Event {
     pub staccato: bool,
 }
 
+impl Default for Event {
+    fn default() -> Self {
+        Self {
+            duration: 1,
+            notes: vec![],
+            staccato: false,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Note {
     pub step: Step,
     pub semitone: i16,
-    pub octave: u8,
+    pub octave: i16,
+}
+
+impl Note {
+    pub fn normalized(mut self) -> Self {
+        const STEPS: [Step; 7] = [
+            Step::A,
+            Step::B,
+            Step::C,
+            Step::D,
+            Step::E,
+            Step::F,
+            Step::G,
+        ];
+
+        let mut step_up = STEPS;
+        step_up.rotate_left(1);
+
+        let mut step_down = STEPS;
+        step_down.rotate_right(1);
+
+        loop {
+            let max_sharps = match self.step {
+                Step::B | Step::E => 0,
+                _ => 1,
+            };
+            let max_flats = match self.step {
+                Step::C | Step::F => 0,
+                _ => -1,
+            };
+
+            if self.semitone > max_sharps {
+                self.semitone -= 1;
+                self.step = step_up[self.step as usize];
+                if self.step == Step::C {
+                    self.octave += 1;
+                }
+            } else if self.semitone < max_flats {
+                self.semitone += 1;
+                self.step = step_down[self.step as usize];
+                if self.step == Step::B {
+                    self.octave -= 1;
+                }
+            } else {
+                break self;
+            }
+        }
+    }
 }
 
 impl Display for Note {

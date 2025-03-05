@@ -14,6 +14,10 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
     let mut state = State::default();
     let mut score = state.score(&mxml);
 
+    for part in &mut score.parts {
+        part.apply_transpose();
+    }
+
     let divisions = score.unify_divisions();
     score.fix_carryover_chords();
 
@@ -31,16 +35,10 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
 }
 
 fn empty_part() -> output::Part {
-    output::Part {
-        measures: vec![output::Measure {
-            events: vec![output::Event {
-                duration: 1,
-                notes: vec![],
-                staccato: false,
-            }],
-            ..Default::default()
-        }],
-    }
+    let mut part = output::Part::default();
+    part.measures.push(Default::default());
+    part.measures[0].events.push(Default::default());
+    part
 }
 
 mod extensions;
@@ -92,6 +90,21 @@ impl State {
                 MeasureElement::Attributes(a) => {
                     if let Some(divisions) = &a.content.divisions {
                         self.score.last_measure().divisions = Some(divisions.content.0);
+                    }
+
+                    for transpose in &a.content.transpose {
+                        assert!(
+                            self.score.last_part().transpose.is_none(),
+                            "multiple transposes on one part"
+                        );
+
+                        self.score.last_part().transpose = Some(output::Transpose {
+                            octave: transpose
+                                .content
+                                .octave_change
+                                .map_or(0, |x| x.content.into()),
+                            chromatic: transpose.content.chromatic.content.0,
+                        })
                     }
                 }
                 MeasureElement::Backup(..) => break,
@@ -187,7 +200,7 @@ impl State {
         let output_note = output::Note {
             step: pitch.content.step.content,
             semitone: pitch.content.alter.map_or(0, |a| a.content.0),
-            octave: pitch.content.octave.content.0,
+            octave: pitch.content.octave.content.0.into(),
         };
 
         if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
