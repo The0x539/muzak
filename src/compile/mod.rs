@@ -65,6 +65,28 @@ impl State {
             self.part(part);
         }
         self.score.bpm = self.bpm.unwrap_or((0.25, 120)).1; // TODO: clean this up
+
+        for (part, out_part) in std::iter::zip(
+            &score.content.part_list.content.content,
+            &mut self.score.parts,
+        ) {
+            let PartListElement::ScorePart(part) = part else {
+                continue;
+            };
+
+            let name = part.content.part_name.content.to_lowercase();
+
+            if name.contains("beep") || name.contains("sine") {
+                out_part.instrument = Some(crate::types::Instrument::Beep);
+            } else if name.contains("keyboard") {
+                out_part.instrument = Some(crate::types::Instrument::Keyboard);
+            } else if name.contains("bell") {
+                out_part.instrument = Some(crate::types::Instrument::Bell);
+            } else if name.contains("waterphone") {
+                out_part.instrument = Some(crate::types::Instrument::Waterphone);
+            }
+        }
+
         std::mem::take(&mut self.score)
     }
 

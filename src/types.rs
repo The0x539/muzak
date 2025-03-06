@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use strum::VariantArray;
+use strum::{Display, VariantArray};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Score {
@@ -37,11 +37,16 @@ impl Part {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+// TODO: Establish a single source of truth for these characters
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Display)]
 pub enum Instrument {
+    #[strum(to_string = "∿")]
     Beep,
+    #[strum(to_string = "🎹")]
     Keyboard,
+    #[strum(to_string = "🔔")]
     Bell,
+    #[strum(to_string = "🌊")]
     Waterphone,
 }
 

@@ -3,6 +3,8 @@ use std::fmt::{Display, Formatter, Write};
 use musicxml::datatypes::Step;
 use strum::{EnumCount, IntoStaticStr, VariantArray};
 
+use crate::types::Instrument;
+
 #[derive(Debug, Default, Clone)]
 pub struct Score {
     pub parts: Vec<Part>,
@@ -81,6 +83,7 @@ impl Score {
 #[derive(Debug, Default, Clone)]
 pub struct Part {
     pub transpose: Option<Transpose>,
+    pub instrument: Option<Instrument>,
     pub measures: Vec<Measure>,
 }
 impl Part {
@@ -346,6 +349,9 @@ impl Display for Measure {
 
 impl Display for Part {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(instrument) = self.instrument {
+            writeln!(f, "{}", instrument)?;
+        }
         for (i, measure) in self.measures.iter().enumerate() {
             if i > 0 {
                 f.write_char('\n')?;
