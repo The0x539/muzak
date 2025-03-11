@@ -78,7 +78,7 @@ impl State {
 
             if name.contains("beep") || name.contains("sine") {
                 out_part.instrument = Some(crate::types::Instrument::Beep);
-            } else if name.contains("keyboard") {
+            } else if name.contains("key") {
                 out_part.instrument = Some(crate::types::Instrument::Keyboard);
             } else if name.contains("bell") {
                 out_part.instrument = Some(crate::types::Instrument::Bell);
