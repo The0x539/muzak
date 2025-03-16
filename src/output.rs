@@ -10,6 +10,9 @@ pub trait Instrument {
     // which is significantly faster than the delay&sum approach.
     const HAS_SUSTAIN: bool = false;
 
+    const LOW_PASS: Option<u32> = Some(1000);
+    const AMP: f32 = 1.0;
+
     fn play_note(frequency: f32, duration: Duration) -> Self::Note;
 
     fn play_chord(
@@ -30,21 +33,23 @@ pub trait Instrument {
     }
 
     fn play_part(part: &crate::types::Part, beat_duration: Duration) -> BoxSource<f32> {
-        if Self::HAS_SUSTAIN {
-            Box::new(play_part_with_sustain::<Self>(part, beat_duration))
-        } else {
-            Box::new(play_part_without_sustain::<Self>(part, beat_duration))
+        let d = beat_duration;
+        match (Self::HAS_SUSTAIN, Self::LOW_PASS) {
+            (true, Some(n)) => Box::new(play_part_with_sustain::<Self>(part, d).low_pass(n)),
+            (false, Some(n)) => Box::new(play_part_without_sustain::<Self>(part, d).low_pass(n)),
+            (true, None) => Box::new(play_part_with_sustain::<Self>(part, d)),
+            (false, None) => Box::new(play_part_without_sustain::<Self>(part, d)),
         }
     }
 }
 
-fn play_part_with_sustain<T: Instrument + ?Sized>(
+pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
     beat_duration: Duration,
 ) -> impl Source<Item = f32> + 'static {
     let mut track = Chord::new();
     let mut offset = Duration::ZERO;
-    let mut volume = 1.0;
+    let mut volume = T::AMP;
 
     for item in &part.items {
         match item {
@@ -55,20 +60,20 @@ fn play_part_with_sustain<T: Instrument + ?Sized>(
                 }
                 offset += event_duration;
             }
-            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier(),
+            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
         }
     }
 
-    track.low_pass(1000)
+    track
 }
 
-fn play_part_without_sustain<T: Instrument + ?Sized>(
+pub(crate) fn play_part_without_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
     beat_duration: Duration,
 ) -> impl Source<Item = f32> + 'static {
     let mut events = vec![];
 
-    let mut volume = 1.0;
+    let mut volume = T::AMP;
 
     for item in &part.items {
         match item {
@@ -78,11 +83,11 @@ fn play_part_without_sustain<T: Instrument + ?Sized>(
                 // but rests do not and would otherwise be infinite.
                 events.push(chord.amplify(volume).take_duration(duration));
             }
-            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier(),
+            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
         }
     }
 
-    from_iter(events).low_pass(1000)
+    from_iter(events)
 }
 
 pub type BoxSource<T> = Box<dyn Source<Item = T> + Send + 'static>;

@@ -48,6 +48,7 @@ pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'st
             types::Instrument::Keyboard => instruments::Keyboard::play_part,
             types::Instrument::Bell => instruments::Bells::play_part,
             types::Instrument::Waterphone => instruments::Waterphone::play_part,
+            types::Instrument::Snare => instruments::Snare::play_part,
         };
         mixer.add(play_fn(part, beat));
     }

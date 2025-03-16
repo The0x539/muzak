@@ -1,4 +1,5 @@
 use crate::output::{ApplyEffect, Effect, Instrument, SourceExt};
+use rand::Rng;
 use rodio::source::*;
 use std::time::Duration;
 
@@ -31,25 +32,24 @@ impl Effect for Swell {
 // (cons 'beep (muzak/make-instrument :waveform 'sine :effects nil))
 pub struct Beep;
 impl Instrument for Beep {
-    type Note = TakeDuration<Amplify<SignalGenerator>>;
+    type Note = TakeDuration<SignalGenerator>;
+    const AMP: f32 = 0.8;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
-        wave(Function::Sine, frequency)
-            .amplify(0.8)
-            .take_duration(duration)
+        wave(Function::Sine, frequency).take_duration(duration)
     }
 }
 
 // (cons 'bells (muzak/make-instrument :waveform 'square :effects '(dampen) :sustain 4))
 pub struct Bells;
 impl Instrument for Bells {
-    type Note = TakeDuration<Amplify<ApplyEffect<SignalGenerator, Dampen>>>;
+    type Note = TakeDuration<ApplyEffect<SignalGenerator, Dampen>>;
     const HAS_SUSTAIN: bool = true;
+    const AMP: f32 = 0.4;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Square, frequency)
             .with_effect(Dampen)
-            .amplify(0.4)
             .take_duration(duration + Duration::from_secs(4))
     }
 }
@@ -57,11 +57,11 @@ impl Instrument for Bells {
 // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear)))
 pub struct Keyboard;
 impl Instrument for Keyboard {
-    type Note = TakeDuration<LinearGainRamp<Amplify<SignalGenerator>>>;
+    type Note = TakeDuration<LinearGainRamp<SignalGenerator>>;
+    const AMP: f32 = 0.5;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Square, frequency)
-            .amplify(0.5)
             .linear_gain_ramp(duration, 1.0, 0.5, true)
             .take_duration(duration /* + Duration::from_millis(200) */)
     }
@@ -76,5 +76,21 @@ impl Instrument for Waterphone {
         wave(Function::Triangle, frequency)
             .with_effect(Swell(duration.as_secs_f32()))
             .take_duration(duration)
+    }
+}
+
+pub struct Snare;
+impl Instrument for Snare {
+    type Note = TakeDuration<LinearGainRamp<SignalGenerator>>;
+    const HAS_SUSTAIN: bool = true;
+    const LOW_PASS: Option<u32> = None;
+    const AMP: f32 = 0.3;
+
+    fn play_note(_frequency: f32, _duration: Duration) -> Self::Note {
+        let dur = Duration::from_millis(150);
+        let f = |_| rand::rng().random_range(-1.0..=1.0);
+        SignalGenerator::with_function(SAMPLE_RATE, 1.0, f)
+            .linear_gain_ramp(dur, 1.0, 0.0, true) // TODO: unified VOLUME associated const
+            .take_duration(dur)
     }
 }

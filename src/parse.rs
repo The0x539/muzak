@@ -76,7 +76,8 @@ parsers! {
         '🎹' => Keyboard,
         '🔔' => Bell,
         '🌊' => Waterphone,
-    };
+        '🥁' => Snare,
+     };
 
     pub part: Part =  seq! {Part{
         instrument: opt(terminated(instrument, junk)),
@@ -126,7 +127,7 @@ const NOT_JUNK: &str = concat!(
     // Part dividers, chords, rests, and note-extensions on new lines
     "|[/~🛏",
     // Instruments
-    "∿🎹🔔🌊",
+    "∿🎹🔔🌊🥁",
     // Dynamics
     "𝓹𝓶𝓯"
 );

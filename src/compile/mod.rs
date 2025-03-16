@@ -104,6 +104,8 @@ impl State {
                 out_part.instrument = Some(crate::types::Instrument::Bell);
             } else if name.contains("waterphone") {
                 out_part.instrument = Some(crate::types::Instrument::Waterphone);
+            } else if name.contains("snare") {
+                out_part.instrument = Some(crate::types::Instrument::Snare);
             }
         }
 

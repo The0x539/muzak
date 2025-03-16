@@ -48,6 +48,8 @@ pub enum Instrument {
     Bell,
     #[strum(to_string = "🌊")]
     Waterphone,
+    #[strum(to_string = "🥁")]
+    Snare,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
