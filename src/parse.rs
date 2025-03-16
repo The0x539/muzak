@@ -44,8 +44,11 @@ parsers! {
         duration: repeat(0.., preceded(junk, '~')).map(|n: usize| n as u32 + 1),
     }};
 
+    bed: () = seq!('🛏', opt('\u{fe0f}')).void(); // some U+FE0F Variant Selector nonsense
+
     pub event: Event = alt((
-        '/'.value(Event::Rest),
+        '/'.value(Event::Rest(1)),
+        preceded(bed, integer).map(Event::Rest),
         note.map(Event::Note),
         delimited('[', repeat(0.., note), ']').map(Event::Chord),
     ));
@@ -121,7 +124,7 @@ const NOT_JUNK: &str = concat!(
     // BPM
     "0123456789",
     // Part dividers, chords, rests, and note-extensions on new lines
-    "|[/~",
+    "|[/~🛏",
     // Instruments
     "∿🎹🔔🌊",
     // Dynamics

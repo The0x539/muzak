@@ -31,7 +31,27 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
         score.parts.rotate_right(1);
     }
 
-    score.to_string()
+    post_process(&score.to_string())
+}
+
+fn post_process(score: &str) -> String {
+    let mut lines = score.lines().map(String::from).collect::<Vec<_>>();
+
+    // Merge consecutive long-rest lines
+    for i in (1..lines.len()).rev() {
+        fn get_long_rest(line: &str) -> Option<u32> {
+            line.strip_prefix("🛏")?.parse().ok()
+        }
+
+        let Some((a, b)) = get_long_rest(&lines[i - 1]).zip(get_long_rest(&lines[i])) else {
+            continue;
+        };
+
+        lines.remove(i);
+        lines[i - 1] = format!("🛏{}", a + b);
+    }
+
+    lines.join("\n")
 }
 
 fn empty_part() -> output::Part {

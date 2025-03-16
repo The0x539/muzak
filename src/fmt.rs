@@ -48,7 +48,12 @@ impl Display for Note {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Rest => f.write_char('/'),
+            Event::Rest(dur) => {
+                for _ in 0..*dur {
+                    f.write_char('/')?;
+                }
+                Ok(())
+            }
             Event::Note(note) => note.fmt(f),
             Event::Chord(notes) => {
                 f.write_char('[')?;

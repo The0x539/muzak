@@ -30,7 +30,7 @@ impl Score {
                     *n = max;
                 };
 
-                for event in measure.events() {
+                for event in measure.events_mut() {
                     event.duration *= ratio;
                 }
             }
@@ -103,7 +103,7 @@ impl Part {
         for note in self
             .measures
             .iter_mut()
-            .flat_map(|m| m.events())
+            .flat_map(|m| m.events_mut())
             .flat_map(|e| &mut e.notes)
         {
             note.octave += transpose.octave;
@@ -129,7 +129,14 @@ pub struct Measure {
 }
 
 impl Measure {
-    pub fn events(&mut self) -> impl DoubleEndedIterator<Item = &mut Event> {
+    pub fn events(&self) -> impl DoubleEndedIterator<Item = &Event> {
+        self.items.iter().filter_map(|item| match item {
+            MeasureItem::Event(event) => Some(event),
+            _ => None,
+        })
+    }
+
+    pub fn events_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Event> {
         self.items.iter_mut().filter_map(|item| match item {
             MeasureItem::Event(event) => Some(event),
             _ => None,
@@ -141,7 +148,7 @@ impl Measure {
     }
 
     pub fn try_last_event(&mut self) -> Option<&mut Event> {
-        self.events().next_back()
+        self.events_mut().next_back()
     }
 
     pub fn push_event(&mut self, event: Event) {
@@ -337,6 +344,13 @@ impl Display for Measure {
         for _ in 0..self.carryover {
             f.write_char('~')?;
         }
+
+        if self.events().all(|e| e.notes.is_empty()) {
+            let dur: u32 = self.events().map(|e| e.duration).sum();
+            write!(f, "🛏{dur}")?;
+            return Ok(());
+        }
+
         for (i, item) in self.items.iter().enumerate() {
             if i > 0 || self.carryover > 0 {
                 f.write_char(' ')?;

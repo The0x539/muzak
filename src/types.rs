@@ -75,7 +75,7 @@ impl Dynamic {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
-    Rest,
+    Rest(u32),
     Note(Note),
     Chord(Vec<Note>),
 }
@@ -83,14 +83,18 @@ pub enum Event {
 impl Event {
     pub fn notes(&self) -> &[Note] {
         match self {
-            Self::Rest => &[],
+            Self::Rest(..) => &[],
             Self::Note(note) => std::slice::from_ref(note),
             Self::Chord(notes) => notes,
         }
     }
 
     pub fn beat_count(&self) -> u32 {
-        self.notes().iter().map(|n| n.duration).max().unwrap_or(1)
+        match self {
+            Self::Rest(dur) => *dur,
+            Self::Note(note) => note.duration,
+            Self::Chord(notes) => notes.iter().map(|n| n.duration).max().unwrap_or(1),
+        }
     }
 }
 
