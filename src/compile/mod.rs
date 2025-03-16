@@ -246,20 +246,25 @@ impl State {
 
         let duration = info.duration.content.0;
 
-        let AudibleType::Pitch(pitch) = info.audible else {
-            assert!(matches!(info.audible, AudibleType::Rest(..)));
-            self.score.last_measure().push_event(output::Event {
-                duration,
-                notes: vec![],
-                staccato: false,
-            });
-            return;
-        };
-
-        let output_note = output::Note {
-            step: pitch.content.step.content,
-            semitone: pitch.content.alter.map_or(0, |a| a.content.0),
-            octave: pitch.content.octave.content.0.into(),
+        let output_note = match info.audible {
+            AudibleType::Pitch(pitch) => output::Note {
+                step: pitch.content.step.content,
+                semitone: pitch.content.alter.map_or(0, |a| a.content.0),
+                octave: pitch.content.octave.content.0.into(),
+            },
+            AudibleType::Unpitched(u) => output::Note {
+                step: u.content.display_step.content,
+                semitone: 0,
+                octave: u.content.display_octave.content.0.into(),
+            },
+            AudibleType::Rest(..) => {
+                self.score.last_measure().push_event(output::Event {
+                    duration,
+                    notes: vec![],
+                    staccato: false,
+                });
+                return;
+            }
         };
 
         if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
