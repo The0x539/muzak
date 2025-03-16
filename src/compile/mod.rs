@@ -2,6 +2,7 @@
 // Its craftsmanship is inferior to that of the rest of muzak-rs.
 // Perhaps one day its data structures shall be unified with those of the parsing/playback phase.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use musicxml::datatypes::*;
@@ -77,37 +78,56 @@ struct State {
     // as only the first part seems to actually get the volta,
     // even though it affects all the parts.
     volta_memory: HashMap<String, String>,
+
+    current_voice: u32,
+    // These reset for each part.
+    voices_seen: BTreeSet<u32>,
+    voices_processed: BTreeSet<u32>,
 }
 
 impl State {
     fn score(&mut self, score: &ScorePartwise) -> output::Score {
-        for part in &score.content.part {
-            self.part(part);
-        }
-        self.score.bpm = self.bpm.unwrap_or((0.25, 120)).1; // TODO: clean this up
+        let part_list = score
+            .content
+            .part_list
+            .content
+            .content
+            .iter()
+            .filter_map(|x| match x {
+                PartListElement::ScorePart(score_part) => Some(score_part),
+                _ => None,
+            });
 
-        for (part, out_part) in std::iter::zip(
-            &score.content.part_list.content.content,
-            &mut self.score.parts,
-        ) {
-            let PartListElement::ScorePart(part) = part else {
-                continue;
-            };
+        for (part, metadata) in std::iter::zip(&score.content.part, part_list) {
+            let part_name = metadata.content.part_name.content.to_lowercase();
+            let instrument = [
+                ("beep", crate::types::Instrument::Beep),
+                ("sine", crate::types::Instrument::Beep),
+                ("bell", crate::types::Instrument::Bell),
+                ("waterphone", crate::types::Instrument::Waterphone),
+                ("snare", crate::types::Instrument::Snare),
+            ]
+            .into_iter()
+            .find(|(keyword, _)| part_name.contains(keyword))
+            .map(|(_, v)| v);
 
-            let name = part.content.part_name.content.to_lowercase();
+            self.voices_seen.clear();
+            self.voices_seen.insert(1);
+            self.voices_processed.clear();
 
-            if name.contains("beep") || name.contains("sine") {
-                out_part.instrument = Some(crate::types::Instrument::Beep);
-            } else if name.contains("key") {
-                out_part.instrument = Some(crate::types::Instrument::Keyboard);
-            } else if name.contains("bell") {
-                out_part.instrument = Some(crate::types::Instrument::Bell);
-            } else if name.contains("waterphone") {
-                out_part.instrument = Some(crate::types::Instrument::Waterphone);
-            } else if name.contains("snare") {
-                out_part.instrument = Some(crate::types::Instrument::Snare);
+            while let Some(voice) = self
+                .voices_seen
+                .difference(&self.voices_processed)
+                .copied()
+                .next()
+            {
+                self.current_voice = voice;
+                self.part(part);
+                self.score.last_part().instrument = instrument;
+                self.voices_processed.insert(voice);
             }
         }
+        self.score.bpm = self.bpm.unwrap_or((0.25, 120)).1; // TODO: clean this up
 
         std::mem::take(&mut self.score)
     }
@@ -151,7 +171,6 @@ impl State {
                         })
                     }
                 }
-                MeasureElement::Backup(..) => break,
                 MeasureElement::Barline(b) => self.barline(b, &measure.attributes.number.0),
                 _ => {}
             }
@@ -192,8 +211,9 @@ impl State {
                     BeatEquation::BPM(bpm) => bpm.content.parse::<u32>().unwrap(),
                     e => panic!("unhandled beat equation: {e:?}"),
                 };
-                assert!(self.bpm.is_none());
-                self.bpm = Some((unit.as_float(), count));
+                let new_bpm = Some((unit.as_float(), count));
+                assert!(self.bpm.is_none() || self.bpm == new_bpm);
+                self.bpm = new_bpm;
             }
             m => panic!("unhandled metronome type {m:?}"),
         }
@@ -241,6 +261,14 @@ impl State {
     }
 
     fn note(&mut self, note: &Note) {
+        if let Some(voice) = &note.content.voice {
+            let voice: u32 = voice.content.parse().unwrap();
+            self.voices_seen.insert(voice);
+            if voice != self.current_voice {
+                return;
+            }
+        }
+
         let NoteType::Normal(info) = &note.content.info else {
             println!("eep, non-normal note");
             return;
