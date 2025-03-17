@@ -1,5 +1,4 @@
 use crate::output::{ApplyEffect, Effect, Instrument, SourceExt};
-use rand::Rng;
 use rodio::source::*;
 use std::time::Duration;
 
@@ -81,16 +80,15 @@ impl Instrument for Waterphone {
 
 pub struct Snare;
 impl Instrument for Snare {
-    type Note = TakeDuration<LinearGainRamp<SignalGenerator>>;
+    type Note = TakeDuration<LinearGainRamp<WhiteNoise>>;
     const HAS_SUSTAIN: bool = true;
     const LOW_PASS: Option<u32> = None;
     const AMP: f32 = 0.3;
 
     fn play_note(_frequency: f32, _duration: Duration) -> Self::Note {
         let dur = Duration::from_millis(150);
-        let f = |_| rand::rng().random_range(-1.0..=1.0);
-        SignalGenerator::with_function(SAMPLE_RATE, 1.0, f)
-            .linear_gain_ramp(dur, 1.0, 0.0, true) // TODO: unified VOLUME associated const
+        WhiteNoise::new(SAMPLE_RATE)
+            .linear_gain_ramp(dur, 1.0, 0.0, true)
             .take_duration(dur)
     }
 }

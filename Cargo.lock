@@ -615,7 +615,6 @@ dependencies = [
  "clap",
  "dialoguer",
  "musicxml",
- "rand",
  "rodio",
  "strum",
  "wavers",
@@ -888,6 +887,7 @@ dependencies = [
  "hound",
  "lewton",
  "num-rational",
+ "rand",
  "symphonia",
 ]
 
