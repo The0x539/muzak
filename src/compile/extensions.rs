@@ -68,3 +68,16 @@ impl NoteTypeValueExt for NoteTypeValue {
         })
     }
 }
+
+pub trait JustGetTheValue {
+    type Value;
+    fn value(&self) -> Self::Value;
+}
+
+// TODO: impl and use for more types
+impl JustGetTheValue for Option<musicxml::elements::Staff> {
+    type Value = u32;
+    fn value(&self) -> Self::Value {
+        self.as_ref().map_or(1, |x| x.content.0)
+    }
+}

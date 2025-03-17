@@ -151,8 +151,19 @@ impl Measure {
         self.events_mut().next_back()
     }
 
-    pub fn push_event(&mut self, event: Event) {
-        self.items.push(MeasureItem::Event(event))
+    pub fn duration(&self) -> u32 {
+        self.events().map(|e| e.duration).sum()
+    }
+
+    pub fn push_event(&mut self, duration: u32) -> &mut Event {
+        self.items.push(MeasureItem::Event(Event {
+            duration,
+            ..Default::default()
+        }));
+        match self.items.last_mut() {
+            Some(MeasureItem::Event(event)) => event,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -346,8 +357,7 @@ impl Display for Measure {
         }
 
         if self.events().all(|e| e.notes.is_empty()) {
-            let dur: u32 = self.events().map(|e| e.duration).sum();
-            write!(f, "🛏{dur}")?;
+            write!(f, "🛏{}", self.duration())?;
             return Ok(());
         }
 

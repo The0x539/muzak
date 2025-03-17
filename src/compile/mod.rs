@@ -58,7 +58,7 @@ fn post_process(score: &str) -> String {
 fn empty_part() -> output::Part {
     let mut part = output::Part::default();
     part.measures.push(Default::default());
-    part.measures[0].push_event(Default::default());
+    part.measures[0].push_event(1);
     part
 }
 
@@ -79,10 +79,15 @@ struct State {
     // even though it affects all the parts.
     volta_memory: HashMap<String, String>,
 
-    current_voice: u32,
+    // (voice, staff) tuple, so dynamics don't get applied to the wrong staff
+    current_voice: (u32, u32),
     // These reset for each part.
-    voices_seen: BTreeSet<u32>,
-    voices_processed: BTreeSet<u32>,
+    voices_seen: BTreeSet<(u32, u32)>,
+    voices_processed: BTreeSet<(u32, u32)>,
+
+    // Used to keep track of a measure's longest duration across voices,
+    // in order to pad a measure with a rest if the current voice doesn't appear in that measure
+    measure_pos: u32,
 }
 
 impl State {
@@ -103,6 +108,7 @@ impl State {
             let instrument = [
                 ("beep", crate::types::Instrument::Beep),
                 ("sine", crate::types::Instrument::Beep),
+                ("key", crate::types::Instrument::Keyboard),
                 ("bell", crate::types::Instrument::Bell),
                 ("waterphone", crate::types::Instrument::Waterphone),
                 ("snare", crate::types::Instrument::Snare),
@@ -112,7 +118,7 @@ impl State {
             .map(|(_, v)| v);
 
             self.voices_seen.clear();
-            self.voices_seen.insert(1);
+            self.voices_seen.insert((1, 1));
             self.voices_processed.clear();
 
             while let Some(voice) = self
@@ -147,6 +153,7 @@ impl State {
 
     fn measure(&mut self, measure: &Measure) {
         self.score.add_measure();
+        self.measure_pos = 0;
         for element in &measure.content {
             match element {
                 MeasureElement::Direction(d) => self.direction(d),
@@ -172,12 +179,38 @@ impl State {
                     }
                 }
                 MeasureElement::Barline(b) => self.barline(b, &measure.attributes.number.0),
+                MeasureElement::Backup(b) => {
+                    let duration = b.content.duration.content.0;
+                    self.measure_pos -= duration;
+                }
+                MeasureElement::Forward(f) => {
+                    let duration = f.content.duration.content.0;
+                    self.measure_pos += duration;
+                    self.score.last_measure().push_event(duration);
+                }
                 _ => {}
             }
+        }
+
+        self.postprocess_measure();
+    }
+
+    // Call just before the current final measure is about to be covered by another measure.
+    // This happens when adding a new measure or when rendering a repeat.
+    fn postprocess_measure(&mut self) {
+        let measure = self.score.last_measure();
+
+        if let Some(remainder @ 1..) = self.measure_pos.checked_sub(measure.duration()) {
+            measure.push_event(remainder);
         }
     }
 
     fn direction(&mut self, direction: &Direction) {
+        let staff = direction.content.staff.value();
+        if staff != self.current_voice.1 {
+            return;
+        }
+
         for ty in &direction.content.direction_type {
             match &ty.content {
                 DirectionTypeContents::Metronome(m) => self.metronome(m),
@@ -244,6 +277,8 @@ impl State {
 
             if let Some(repeat) = &barline.content.repeat {
                 if repeat.attributes.direction == BackwardForward::Backward {
+                    self.postprocess_measure();
+
                     self.score
                         .last_part()
                         .measures
@@ -261,14 +296,6 @@ impl State {
     }
 
     fn note(&mut self, note: &Note) {
-        if let Some(voice) = &note.content.voice {
-            let voice: u32 = voice.content.parse().unwrap();
-            self.voices_seen.insert(voice);
-            if voice != self.current_voice {
-                return;
-            }
-        }
-
         let NoteType::Normal(info) = &note.content.info else {
             println!("eep, non-normal note");
             return;
@@ -276,33 +303,47 @@ impl State {
 
         let duration = info.duration.content.0;
 
+        if info.chord.is_none() {
+            self.measure_pos += duration;
+        }
+
         let output_note = match info.audible {
-            AudibleType::Pitch(pitch) => output::Note {
+            AudibleType::Pitch(pitch) => Some(output::Note {
                 step: pitch.content.step.content,
                 semitone: pitch.content.alter.map_or(0, |a| a.content.0),
                 octave: pitch.content.octave.content.0.into(),
-            },
-            AudibleType::Unpitched(u) => output::Note {
+            }),
+            AudibleType::Unpitched(u) => Some(output::Note {
                 step: u.content.display_step.content,
                 semitone: 0,
                 octave: u.content.display_octave.content.0.into(),
-            },
-            AudibleType::Rest(..) => {
-                self.score.last_measure().push_event(output::Event {
-                    duration,
-                    notes: vec![],
-                    staccato: false,
-                });
+            }),
+            AudibleType::Rest(..) => None,
+        };
+
+        let staff = note.content.staff.value();
+
+        if let Some(voice_elem) = &note.content.voice {
+            let voice_number: u32 = voice_elem.content.parse().unwrap();
+            let voice = (voice_number, staff);
+
+            if voice_number == 2 {
+                assert_eq!(staff, 1);
+            }
+
+            self.voices_seen.insert(voice);
+            if voice != self.current_voice {
                 return;
             }
-        };
+        }
 
         if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
             // just gonna assume no tied staccato notes for now
 
             if let Some(prev) = self.score.last_measure().try_last_event() {
                 assert!(
-                    prev.notes.contains(&output_note),
+                    prev.notes
+                        .contains(output_note.as_ref().expect("what is a tied rest")),
                     "new note introduced at end of tie",
                 );
                 if info.chord.is_none() {
@@ -320,20 +361,18 @@ impl State {
             return;
         }
 
-        if info.chord.is_some() {
+        let event = if info.chord.is_some() {
             let prev = self.score.last_measure().last_event();
             assert_eq!(
                 prev.duration, duration,
                 "chord with notes of different duration"
             );
-            prev.notes.push(output_note);
+            prev
         } else {
-            self.score.last_measure().push_event(output::Event {
-                duration,
-                notes: vec![output_note],
-                staccato: false,
-            });
-        }
+            self.score.last_measure().push_event(duration)
+        };
+
+        event.notes.extend(output_note);
 
         let mut articulations = note
             .content
@@ -347,7 +386,7 @@ impl State {
             .flat_map(|a| &a.content);
 
         if articulations.any(|a| matches!(a, ArticulationsType::Staccato(_))) {
-            self.score.last_measure().last_event().staccato = true;
+            event.staccato = true;
         }
     }
 }
