@@ -152,7 +152,7 @@ impl Measure {
     }
 
     pub fn duration(&self) -> u32 {
-        self.events().map(|e| e.duration).sum()
+        self.carryover + self.events().map(|e| e.duration).sum::<u32>()
     }
 
     pub fn push_event(&mut self, duration: u32) -> &mut Event {
