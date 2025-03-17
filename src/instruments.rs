@@ -20,14 +20,6 @@ impl Effect for Dampen {
     }
 }
 
-// (cons 'swell (lambda (s d) (format "((t-%.1f)/%.1f)" s (+ d))))
-pub struct Swell(pub f32);
-impl Effect for Swell {
-    fn calculate(&self, elapsed: f32) -> f32 {
-        (elapsed / self.0).clamp(0.0, 1.0)
-    }
-}
-
 // (cons 'beep (muzak/make-instrument :waveform 'sine :effects nil))
 pub struct Beep;
 impl Instrument for Beep {
@@ -66,14 +58,15 @@ impl Instrument for Keyboard {
     }
 }
 
+// (cons 'swell (lambda (s d) (format "((t-%.1f)/%.1f)" s (+ d))))
 // (cons 'waterphone (muzak/make-instrument :waveform 'triangle :effects '(swell)))
 pub struct Waterphone;
 impl Instrument for Waterphone {
-    type Note = TakeDuration<ApplyEffect<SignalGenerator, Swell>>;
+    type Note = TakeDuration<LinearGainRamp<SignalGenerator>>;
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Triangle, frequency)
-            .with_effect(Swell(duration.as_secs_f32()))
+            .linear_gain_ramp(duration, 0.0, 1.0, true)
             .take_duration(duration)
     }
 }
