@@ -132,7 +132,7 @@ impl<I: Source<Item = f32>> Iterator for Chord<I> {
 
 impl<I: Source<Item = f32>> Source for Chord<I> {
     fn current_span_len(&self) -> Option<usize> {
-        self.notes.get(0).and_then(|n| n.current_span_len())
+        None
     }
 
     fn channels(&self) -> u16 {
