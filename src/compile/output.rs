@@ -356,7 +356,7 @@ impl Display for Measure {
             f.write_char('~')?;
         }
 
-        if self.events().all(|e| e.notes.is_empty()) {
+        if self.events().all(|e| e.notes.is_empty()) && self.carryover == 0 {
             write!(f, "🛏{}", self.duration())?;
             return Ok(());
         }
