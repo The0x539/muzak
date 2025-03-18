@@ -35,6 +35,9 @@ enum Command {
     },
     /// Convert bells-text to audio, either over speakers or as WAV data.
     Play(PlayOpts),
+    /// Submit a track to be played on The Stream.
+    #[cfg(feature = "submit")]
+    Submit,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -77,6 +80,8 @@ fn main() -> Result<()> {
             let (source, duration) = muzak::mix(&score, options.into());
             output_audio(args.output_file.as_deref(), source, duration)?;
         }
+        #[cfg(feature = "submit")]
+        Command::Submit => submit_song(&input)?,
     }
 
     Ok(())
@@ -132,6 +137,7 @@ fn write_wav(
     mut writer: impl Write,
     source: impl rodio::Source<Item = f32> + Send + 'static,
 ) -> Result<()> {
+    let sample_rate = source.sample_rate();
     let mut samples: Vec<f32> = source.collect();
 
     if cfg!(target_endian = "big") {
@@ -140,7 +146,7 @@ fn write_wav(
         }
     }
 
-    let header = WavHeader::new_header::<f32>(48000, 1, samples.len())?;
+    let header = WavHeader::new_header::<f32>(sample_rate as i32, 1, samples.len())?;
 
     let sample_bytes: &[u8] = bytemuck::cast_slice(&samples);
 
@@ -148,6 +154,34 @@ fn write_wav(
     writer.write_all(b"data")?;
     writer.write_all(&(sample_bytes.len() as u32).to_le_bytes())?;
     writer.write_all(sample_bytes)?;
+
+    Ok(())
+}
+
+#[cfg(feature = "submit")]
+fn submit_song(song_text: &str) -> Result<()> {
+    _ = dotenvy::dotenv();
+
+    let (Ok(username), Ok(password)) = (dotenvy::var("LCOLONQ_USER"), dotenvy::var("LCOLONQ_PASS"))
+    else {
+        eprintln!(
+            "please specify LCOLONQ_USER and LCOLONQ_PASS as environment variables or in a .env file"
+        );
+        std::process::exit(1);
+    };
+
+    let agent = ureq::agent();
+
+    // avoid pulling in serde just for this
+    let auth_body = format!("{{\"username\": {username:?},\"password\":{password:?}}}");
+
+    agent
+        .post("https://auth.colonq.computer/api/firstfactor")
+        .send(&auth_body)?;
+
+    agent
+        .post("https://secure.colonq.computer/api/redeem")
+        .send_form([("name", "bells of bezelea"), ("input", song_text)])?;
 
     Ok(())
 }
