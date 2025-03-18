@@ -13,6 +13,13 @@ pub trait Instrument {
     const LOW_PASS: Option<u32> = Some(1000);
     const AMP: f32 = 1.0;
 
+    // Ideally wouldn't be necessary, but note sources currently tend to be infinite.
+    // Returns the duration of the actual audio source returned by play_note,
+    // which will differ for instruments with sustain.
+    fn envelope_size(note_duration: Duration) -> Duration {
+        note_duration
+    }
+
     fn play_note(frequency: f32, duration: Duration) -> Self::Note;
 
     fn play_chord(
@@ -47,24 +54,96 @@ pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
     beat_duration: Duration,
 ) -> impl Source<Item = f32> + 'static {
-    let mut track = Chord::new();
+    #[derive(Copy, Clone)]
+    struct TimeSpan {
+        start: Duration,
+        len: Duration,
+    }
+
+    impl TimeSpan {
+        fn end(&self) -> Duration {
+            self.start + self.len
+        }
+
+        fn intersects(&self, other: &Self) -> bool {
+            !(self.start > other.end() || other.start > self.end())
+        }
+    }
+
+    impl std::ops::BitOr for TimeSpan {
+        type Output = Self;
+        fn bitor(self, other: Self) -> Self::Output {
+            let start = self.start.min(other.start);
+            let end = self.end().max(other.end());
+            let len = end - start;
+            Self { start, len }
+        }
+    }
+
+    struct NoteGroup<N> {
+        span: TimeSpan,
+        notes: Vec<(Duration, N)>,
+    }
+
+    let mut groups: Vec<NoteGroup<_>> = vec![];
+
     let mut offset = Duration::ZERO;
     let mut volume = T::AMP;
 
     for item in &part.items {
-        match item {
-            PartItem::Event(event) => {
-                let (chord, event_duration) = T::play_chord(event, beat_duration);
-                if !event.notes().is_empty() {
-                    track.add(chord.amplify(volume).delay(offset));
-                }
-                offset += event_duration;
+        // Assume "event" is the common case.
+        // Structure control flow accordingly to reduce nesting.
+        let event = match item {
+            PartItem::Event(e) => e,
+            PartItem::Dynamic(dynamic) => {
+                volume = dynamic.to_multiplier() * T::AMP;
+                continue;
             }
-            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
+        };
+
+        if event.notes().is_empty() {
+            offset += event.beat_count() * beat_duration;
+            continue;
         }
+
+        let (chord, event_duration) = T::play_chord(event, beat_duration);
+        let chord = chord.amplify(volume);
+
+        let span = TimeSpan {
+            start: offset,
+            len: T::envelope_size(event_duration),
+        };
+
+        if let Some(group) = groups.last_mut().filter(|g| g.span.intersects(&span)) {
+            group.span = group.span | span;
+            group.notes.push((offset, chord));
+        } else {
+            groups.push(NoteGroup {
+                span,
+                notes: vec![(offset, chord)],
+            });
+        }
+
+        offset += event_duration;
     }
 
-    track
+    let mut prev_end = Duration::ZERO;
+
+    let mut sequence = vec![];
+
+    for group in groups {
+        assert!(group.span.start >= prev_end);
+        let gap = group.span.start - prev_end;
+        let mut group_mixer = Chord::new();
+        for (absolute, note) in group.notes {
+            let relative = absolute - group.span.start;
+            group_mixer.add(note.delay(relative));
+        }
+        sequence.push(group_mixer.delay(gap));
+        prev_end = group.span.end();
+    }
+
+    rodio::source::from_iter(sequence)
 }
 
 pub(crate) fn play_part_without_sustain<T: Instrument + ?Sized>(

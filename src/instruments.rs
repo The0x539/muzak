@@ -43,6 +43,10 @@ impl Instrument for Bells {
             .with_effect(Dampen)
             .take_duration(duration + Duration::from_secs(4))
     }
+
+    fn envelope_size(note_duration: Duration) -> Duration {
+        note_duration + Duration::from_secs(4)
+    }
 }
 
 // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear)))
@@ -83,5 +87,9 @@ impl Instrument for Snare {
         WhiteNoise::new(SAMPLE_RATE)
             .linear_gain_ramp(dur, 1.0, 0.0, true)
             .take_duration(dur)
+    }
+
+    fn envelope_size(_: Duration) -> Duration {
+        Duration::from_millis(150)
     }
 }
