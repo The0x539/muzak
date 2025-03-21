@@ -40,12 +40,17 @@ enum Command {
     Submit,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Copy, Clone)]
 struct PlayOpts {
     #[arg(short = 'd', long, value_name = "SECONDS")]
     max_duration: Option<f64>,
     #[arg(short = 't', long, value_name = "COUNT")]
     max_tracks: Option<NonZeroUsize>,
+    #[arg(long, value_name = "FACTOR", default_value = "1.0")]
+    volume: f32,
+    /// Override TTY detection; prefer actually playing audio over writing WAV to stdout.
+    #[arg(long, short)]
+    force_play: bool,
 }
 
 impl From<PlayOpts> for muzak::MixOptions {
@@ -53,6 +58,7 @@ impl From<PlayOpts> for muzak::MixOptions {
         muzak::MixOptions {
             max_duration: cli.max_duration.map(Duration::from_secs_f64),
             max_tracks: cli.max_tracks,
+            volume: cli.volume,
         }
     }
 }
@@ -78,7 +84,12 @@ fn main() -> Result<()> {
             // winnow errors don't impl std::error::Error for some reason
             let score = muzak::parse(&input).expect("Could not parse score");
             let (source, duration) = muzak::mix(&score, options.into());
-            output_audio(args.output_file.as_deref(), source, duration)?;
+            output_audio(
+                args.output_file.as_deref(),
+                options.force_play,
+                source,
+                duration,
+            )?;
         }
         #[cfg(feature = "submit")]
         Command::Submit => submit_song(&input)?,
@@ -119,15 +130,16 @@ fn ask_before_overwriting(path: &Path) -> Result<File> {
 
 fn output_audio(
     path: Option<&Path>,
+    force_play: bool,
     source: impl rodio::Source<Item = f32> + Send + 'static,
     duration: Duration,
 ) -> Result<()> {
     if let Some(path) = path {
         write_wav(ask_before_overwriting(path)?, source)?;
-    } else if !std::io::stdout().is_terminal() {
-        write_wav(std::io::stdout(), source)?;
-    } else {
+    } else if force_play || std::io::stdout().is_terminal() {
         muzak::play(source, duration);
+    } else {
+        write_wav(std::io::stdout(), source)?;
     }
 
     Ok(())

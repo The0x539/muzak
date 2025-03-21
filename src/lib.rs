@@ -29,6 +29,7 @@ pub fn parse(song_text: &str) -> Result<types::Score, ParseError<'_>> {
 pub struct MixOptions {
     pub max_duration: Option<Duration>,
     pub max_tracks: Option<NonZeroUsize>,
+    pub volume: f32,
 }
 
 pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'static, Duration) {
@@ -59,12 +60,14 @@ pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'st
         .unwrap_or(Duration::MAX)
         .min(desired_duration);
 
+    let mixed = mixer.amplify(options.volume).take_duration(true_duration);
+
     // At the time of writing, rodio is not designed such that take_duration on
     // an infinite source can correctly report its finite and guaranteed duration.
     // This is exactly what we do to construct individual notes/chords,
     // so the full combined source currently cannot report its own duration.
     // This knowledge is necessary for the `sleep` call in `play`, so just return it for now.
-    (mixer.take_duration(true_duration), true_duration)
+    (mixed, true_duration)
 }
 
 pub fn play(source: impl Source<Item = f32> + Send + 'static, duration: Duration) {
