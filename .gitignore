@@ -2,3 +2,6 @@
 /scores
 /font
 .env
+*.wav
+*.flac
+*.opus
