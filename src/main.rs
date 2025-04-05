@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::Duration;
 
 use clap::Parser;
@@ -23,21 +24,26 @@ struct Args {
 #[derive(Parser, Debug, Clone)]
 enum Command {
     /// Convert MusicXML to bells-text.
-    Compile {
-        /// Insert some number of blank tracks before the first track.
-        /// Possibly useful for instrument selection.
-        #[arg(short, long = "pad", default_value_t)]
-        padding: u8,
-        /// Rotate the track list forward by some amount.
-        /// Possibly useful for instrument selection.
-        #[arg(short, long = "rotate", default_value_t)]
-        rotation: u8,
-    },
+    Compile(CompileOpts),
     /// Convert bells-text to audio, either over speakers or as WAV data.
     Play(PlayOpts),
     /// Submit a track to be played on The Stream.
     #[cfg(feature = "submit")]
     Submit,
+    /// Run a MuseScore file through the first two steps of the pipeline: mscz -> musicxml -> bells
+    Phase1(CompileOpts),
+}
+
+#[derive(Parser, Debug, Copy, Clone)]
+struct CompileOpts {
+    /// Insert some number of blank tracks before the first track.
+    /// Possibly useful for instrument selection.
+    #[arg(short, long = "pad", default_value_t)]
+    padding: u8,
+    /// Rotate the track list forward by some amount.
+    /// Possibly useful for instrument selection.
+    #[arg(short, long = "rotate", default_value_t)]
+    rotation: u8,
 }
 
 #[derive(Parser, Debug, Copy, Clone)]
@@ -66,13 +72,23 @@ impl From<PlayOpts> for muzak::MixOptions {
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    run(Args::parse())
+}
+
+fn run(args: Args) -> Result<()> {
+    if let Command::Phase1(opts) = args.command {
+        return phase1(
+            args.input_file.as_deref(),
+            args.output_file.as_deref(),
+            opts,
+        );
+    }
 
     let input = read_text(args.input_file.as_deref())?;
 
     match args.command {
-        Command::Compile { padding, rotation } => {
-            let bells = muzak::compile(&input, padding, rotation);
+        Command::Compile(opts) => {
+            let bells = muzak::compile(&input, opts.padding, opts.rotation);
             if let Some(path) = args.output_file.as_deref() {
                 let mut f = ask_before_overwriting(path)?;
                 write!(f, "{bells}")?;
@@ -93,6 +109,7 @@ fn main() -> Result<()> {
         }
         #[cfg(feature = "submit")]
         Command::Submit => submit_song(&input)?,
+        Command::Phase1(..) => unreachable!(),
     }
 
     Ok(())
@@ -196,4 +213,81 @@ fn submit_song(song_text: &str) -> Result<()> {
         .send_form([("name", "bells of bezelea"), ("input", song_text)])?;
 
     Ok(())
+}
+
+fn phase1(
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+    compile_opts: CompileOpts,
+) -> Result<()> {
+    let Some(musescore) = find_musescore() else {
+        eprintln!("Could not find MuseScore executable");
+        std::process::exit(1);
+    };
+
+    let temp_dir = tempfile::tempdir()?;
+
+    let mscz_path = if let Some(path) = input_path {
+        path.to_owned()
+    } else if !std::io::stdin().is_terminal() {
+        // TODO: filetype detection or something
+        let path = temp_dir.path().join("in.mscz");
+        std::io::copy(&mut std::io::stdin(), &mut File::create_new(&path)?)?;
+        path
+    } else {
+        eprintln!("Please specify an input path or pipe data via stdin");
+        std::process::exit(1);
+    };
+
+    let xml_path = temp_dir.path().join("out.musicxml");
+
+    // First, invoke MuseScore to convert to MusicXML
+    std::process::Command::new(&musescore)
+        .arg(&mscz_path)
+        .arg("-o")
+        .arg(&xml_path)
+        .stderr(Stdio::null())
+        .spawn()?
+        .wait()?;
+
+    // Then, "invoke" `muzak compile` to convert to bells-text
+    run(Args {
+        command: Command::Compile(compile_opts),
+        input_file: Some(xml_path),
+        output_file: output_path.map(From::from),
+    })
+}
+
+fn find_musescore() -> Option<PathBuf> {
+    let mut env_paths = vec![
+        #[cfg(windows)]
+        r"C:\Program Files\MuseScore 4\bin".into(),
+        #[cfg(windows)]
+        r"C:\Program Files\MuseScore 3\bin".into(),
+    ];
+    if let Some(path_var) = std::env::var_os("PATH") {
+        env_paths.extend(std::env::split_paths(&path_var));
+    }
+
+    let exe_names = [
+        #[cfg(windows)]
+        "MuseScore4.exe",
+        #[cfg(windows)]
+        "MuseScore3.exe",
+        #[cfg(not(windows))]
+        "mscore",
+        #[cfg(not(windows))]
+        "mscore3",
+    ];
+
+    for dir in &env_paths {
+        for exe in &exe_names {
+            let exe_path = dir.join(exe);
+            if exe_path.exists() {
+                return Some(exe_path);
+            }
+        }
+    }
+
+    None
 }
