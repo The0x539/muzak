@@ -144,6 +144,9 @@ impl State {
         self.first_ending_length = 0;
 
         for element in &part.content {
+            // This matches a pattern established by other similar functions,
+            // and acknowledges the potential to add more arms in the future
+            #[allow(clippy::single_match)]
             match &element {
                 PartElement::Measure(m) => self.measure(m),
                 _ => {}
@@ -337,7 +340,7 @@ impl State {
             }
         }
 
-        if info.tie.get(0).map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
+        if info.tie.first().map(|t| t.attributes.r#type) == Some(StartStop::Stop) {
             // just gonna assume no tied staccato notes for now
 
             if let Some(prev) = self.score.last_measure().try_last_event() {

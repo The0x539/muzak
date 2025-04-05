@@ -22,7 +22,7 @@ type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Resu
 type ParseError<'a> = winnow::error::ParseError<&'a str, winnow::error::ContextError>;
 
 pub fn parse(song_text: &str) -> Result<types::Score, ParseError<'_>> {
-    winnow::Parser::parse(&mut parse::score, &mut { song_text })
+    winnow::Parser::parse(&mut parse::score, song_text)
 }
 
 #[derive(Debug, Copy, Clone)]

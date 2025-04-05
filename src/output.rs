@@ -99,12 +99,18 @@ pub struct Chord<I> {
 }
 
 impl<I> Chord<I> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { notes: vec![] }
     }
 
     pub fn add(&mut self, note: I) {
         self.notes.push(note);
+    }
+}
+
+impl<I> Default for Chord<I> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -136,11 +142,11 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
     }
 
     fn channels(&self) -> u16 {
-        self.notes.get(0).map_or(1, |n| n.channels())
+        self.notes.first().map_or(1, |n| n.channels())
     }
 
     fn sample_rate(&self) -> u32 {
-        self.notes.get(0).map_or(48000, |n| n.sample_rate())
+        self.notes.first().map_or(48000, |n| n.sample_rate())
     }
 
     fn total_duration(&self) -> Option<Duration> {
