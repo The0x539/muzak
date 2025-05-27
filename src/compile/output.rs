@@ -266,16 +266,26 @@ impl Display for Note {
         const STEPS: [char; 7] = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
         let mut step_index = self.step as usize;
-        let octave = self.octave;
-        let mut sharp = false;
+        let mut octave = self.octave;
+        let mut accidental = None;
 
+        // TODO: flag-driven behavior to use unicode sharps/flats
+        // (unicode flats should simplify the logic) vs. forcing everything to use only sharps
         match self.semitone {
             0 => {}
-            1 => sharp = true,
+            1 => accidental = Some('#'),
             -1 => {
-                sharp = true;
-                // The octave changes when going from B to C, and there is no C♭
+                // go down to the next letter no matter what
                 step_index = step_index.checked_sub(1).unwrap_or(6);
+
+                // C♭ = B♮; F♭ = E♮; otherwise a flat is equivalent to the previous sharp
+                if !matches!(self.step, Step::C | Step::F) {
+                    accidental = Some('#');
+                }
+                // B-C is where the octave transition happens, so C♭5 = B♮4
+                if self.step == Step::C {
+                    octave -= 1;
+                }
             }
             _ => todo!(),
         }
@@ -286,8 +296,8 @@ impl Display for Note {
         }
 
         f.write_char(step)?;
-        if sharp {
-            f.write_char('#')?;
+        if let Some(ch) = accidental {
+            f.write_char(ch)?;
         }
 
         if !matches!(octave, 4 | 5) {
