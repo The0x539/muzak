@@ -39,6 +39,23 @@ impl Score {
         max
     }
 
+    pub fn fix_hyper_staccato(&mut self) {
+        let events = self
+            .parts
+            .iter_mut()
+            .flat_map(|p| &mut p.measures)
+            .flat_map(|m| &mut m.items)
+            .filter_map(|i| i.as_event_mut())
+            .collect::<Vec<_>>();
+
+        if !events.iter().any(|e| e.staccato && e.duration % 2 != 0) {
+            return;
+        }
+
+        events.into_iter().for_each(|e| e.duration *= 2);
+        self.bpm *= 2;
+    }
+
     pub fn fix_carryover_chords(&mut self) {
         for part in &mut self.parts {
             for i in 1..part.measures.len() {
@@ -171,6 +188,15 @@ impl Measure {
 pub enum MeasureItem {
     Event(Event),
     Dynamic(Dynamic),
+}
+
+impl MeasureItem {
+    fn as_event_mut(&mut self) -> Option<&mut Event> {
+        match self {
+            Self::Event(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, IntoStaticStr, VariantArray, EnumCount)]

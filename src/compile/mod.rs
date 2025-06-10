@@ -21,6 +21,7 @@ pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
 
     let divisions = score.unify_divisions();
     score.fix_carryover_chords();
+    score.fix_hyper_staccato();
 
     // I have no idea how right or wrong this is.
     score.bpm = (score.bpm * divisions) / 4;
