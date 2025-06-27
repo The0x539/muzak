@@ -134,7 +134,8 @@ impl State {
                 self.voices_processed.insert(voice);
             }
         }
-        self.score.bpm = self.bpm.unwrap_or((0.25, 120)).1; // TODO: clean this up
+        let (beat_unit, bpm) = self.bpm.unwrap_or((0.25, 120));
+        self.score.bpm = (bpm as f64 * 4.0 * beat_unit) as u32;
 
         std::mem::take(&mut self.score)
     }
