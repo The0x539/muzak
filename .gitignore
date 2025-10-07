@@ -1,6 +1,8 @@
 /target
 /scores
 /font
+/.direnv
+/result
 .env
 *.wav
 *.flac
