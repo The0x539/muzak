@@ -295,25 +295,32 @@ impl Display for Note {
         let mut octave = self.octave;
         let mut accidental = None;
 
-        // TODO: flag-driven behavior to use unicode sharps/flats
-        // (unicode flats should simplify the logic) vs. forcing everything to use only sharps
-        match self.semitone {
-            0 => {}
-            1 => accidental = Some('#'),
-            -1 => {
-                // go down to the next letter no matter what
-                step_index = step_index.checked_sub(1).unwrap_or(6);
+        if super::legacy_semitones() {
+            match self.semitone {
+                0 => {}
+                1 => accidental = Some('#'),
+                -1 => {
+                    // go down to the next letter no matter what
+                    step_index = step_index.checked_sub(1).unwrap_or(6);
 
-                // C♭ = B♮; F♭ = E♮; otherwise a flat is equivalent to the previous sharp
-                if !matches!(self.step, Step::C | Step::F) {
-                    accidental = Some('#');
+                    // C♭ = B♮; F♭ = E♮; otherwise a flat is equivalent to the previous sharp
+                    if !matches!(self.step, Step::C | Step::F) {
+                        accidental = Some('#');
+                    }
+                    // B-C is where the octave transition happens, so C♭5 = B♮4
+                    if self.step == Step::C {
+                        octave -= 1;
+                    }
                 }
-                // B-C is where the octave transition happens, so C♭5 = B♮4
-                if self.step == Step::C {
-                    octave -= 1;
-                }
+                _ => todo!(),
             }
-            _ => todo!(),
+        } else {
+            accidental = match self.semitone {
+                0 => None,
+                -1 => Some('♭'),
+                1 => Some('♯'),
+                _ => todo!(),
+            }
         }
 
         let mut step = STEPS[step_index];

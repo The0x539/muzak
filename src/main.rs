@@ -44,6 +44,9 @@ struct CompileOpts {
     /// Possibly useful for instrument selection.
     #[arg(short, long = "rotate", default_value_t)]
     rotation: u8,
+    /// Only use ASCII `#` for semitones, instead of Unicode `♯` and `♭`.
+    #[arg(long)]
+    legacy_semitones: bool,
 }
 
 #[derive(Parser, Debug, Copy, Clone)]
@@ -88,7 +91,7 @@ fn run(args: Args) -> Result<()> {
 
     match args.command {
         Command::Compile(opts) => {
-            let bells = muzak::compile(&input, opts.padding, opts.rotation);
+            let bells = muzak::compile(&input, opts.padding, opts.rotation, opts.legacy_semitones);
             if let Some(path) = args.output_file.as_deref() {
                 let mut f = ask_before_overwriting(path)?;
                 write!(f, "{bells}")?;

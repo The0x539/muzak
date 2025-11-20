@@ -4,11 +4,21 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use musicxml::datatypes::*;
 use musicxml::elements::*;
 
-pub fn compile(xml: &str, padding: u8, rotation: u8) -> String {
+static LEGACY_SEMITONES: AtomicBool = AtomicBool::new(false);
+
+fn legacy_semitones() -> bool {
+    LEGACY_SEMITONES.load(Ordering::Relaxed)
+}
+
+pub fn compile(xml: &str, padding: u8, rotation: u8, legacy_semitones: bool) -> String {
+    LEGACY_SEMITONES.store(legacy_semitones, Ordering::Relaxed);
+
     let data = xml.as_bytes().to_vec(); // ¯\_(ツ)_/¯
     let mxml = musicxml::read_score_data_partwise(data).unwrap();
 
