@@ -95,11 +95,22 @@ parsers! {
         parts: separated(0.., preceded(junk, part), '|'),
     }};
 
+    junk: () = separated(0.., unrecognized, comment.void());
+
     // Rather than only accepting whitespace between stuff,
     // ignore any characters that aren't recognized at all.
     // This makes implementation a decent bit more difficult,
     // but it makes it easier to add visual markers to a file.
-    junk: () = take_till(0.., |c| NOT_JUNK.contains(c)).void();
+    unrecognized: () = take_till(0.., |c| NOT_JUNK.contains(c)).void();
+
+    comment: () = {
+     let body = separated(0.., take_till(0.., ['(', ')']).void(), comment);
+        delimited(
+             '(',
+             body,
+             cut_err(')').context(StrContext::Label("unclosed comment"))
+        )
+    };
 }
 
 pub fn base_note(input: &mut &str) -> winnow::ModalResult<BaseNote> {
@@ -134,5 +145,7 @@ const NOT_JUNK: &str = concat!(
     // Instruments
     "∿🎹🔔🌊🥁",
     // Dynamics
-    "𝓹𝓶𝓯"
+    "𝓹𝓶𝓯",
+    // Comments
+    "(",
 );
