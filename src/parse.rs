@@ -1,9 +1,12 @@
 use std::str::FromStr;
 
 use strum::VariantArray;
-use winnow::combinator::{alt, delimited, opt, preceded, repeat, separated, seq, terminated};
+use winnow::Parser;
+use winnow::combinator::{
+    alt, cut_err, delimited, opt, preceded, repeat, separated, seq, terminated,
+};
+use winnow::error::{StrContext, StrContextValue};
 use winnow::token::{one_of, take_till, take_while};
-use winnow::{Parser, Result};
 
 use crate::types::*;
 
@@ -11,7 +14,7 @@ macro_rules! parsers {
     ($(
         $vis:vis $name:ident : $ty:ty = $body:expr;
     )*) => {$(
-        $vis fn $name(input: &mut &str) -> winnow::Result<$ty> {
+        $vis fn $name(input: &mut &str) -> winnow::ModalResult<$ty> {
             $body.parse_next(input)
         }
     )*}
@@ -50,7 +53,9 @@ parsers! {
         '/'.value(Event::Rest(1)),
         preceded(bed, integer).map(Event::Rest),
         note.map(Event::Note),
-        delimited('[', repeat(0.., note), ']').map(Event::Chord),
+        delimited('[', repeat(0.., note), cut_err(']'))
+            .map(Event::Chord)
+            .context(StrContext::Expected(StrContextValue::Description("unclosed chord"))),
     ));
 
     pub dynamic: Dynamic = literals! {
@@ -97,7 +102,7 @@ parsers! {
     junk: () = take_till(0.., |c| NOT_JUNK.contains(c)).void();
 }
 
-pub fn base_note(input: &mut &str) -> Result<BaseNote> {
+pub fn base_note(input: &mut &str) -> winnow::ModalResult<BaseNote> {
     let letter = one_of(b"ABCDEFGabcdefg").parse_next(input)?;
 
     let index = ('A'..letter.to_ascii_uppercase()).count();
@@ -107,7 +112,7 @@ pub fn base_note(input: &mut &str) -> Result<BaseNote> {
     Ok(BaseNote { note, high })
 }
 
-pub fn integer<T: FromStr>(input: &mut &str) -> Result<T>
+pub fn integer<T: FromStr>(input: &mut &str) -> winnow::ModalResult<T>
 where
     T::Err: Send + Sync + std::error::Error + 'static,
 {
