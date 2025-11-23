@@ -1,12 +1,11 @@
-use std::str::FromStr;
-
 use strum::VariantArray;
-use winnow::Parser;
+use winnow::ascii::{dec_int, dec_uint};
 use winnow::combinator::{
     alt, cut_err, delimited, opt, preceded, repeat, separated, seq, terminated,
 };
 use winnow::error::{StrContext, StrContextValue};
-use winnow::token::{one_of, take_till, take_while};
+use winnow::token::{one_of, take_till};
+use winnow::Parser;
 
 use crate::types::*;
 
@@ -43,7 +42,7 @@ parsers! {
     pub note: Note = seq! {Note{
         base: base_note,
         accidental: opt(accidental),
-        octave: opt(integer),
+        octave: opt(dec_int),
         duration: repeat(0.., preceded(junk, '~')).map(|n: usize| n as u32 + 1),
     }};
 
@@ -51,7 +50,7 @@ parsers! {
 
     pub event: Event = alt((
         '/'.value(Event::Rest(1)),
-        preceded(bed, integer).map(Event::Rest),
+        preceded(bed, dec_uint).map(Event::Rest),
         note.map(Event::Note),
         delimited('[', repeat(0.., note), cut_err(']'))
             .map(Event::Chord)
@@ -91,7 +90,7 @@ parsers! {
 
     pub score: Score = seq! {Score{
         _: junk,
-        bpm: opt(integer),
+        bpm: opt(dec_uint),
         parts: separated(0.., preceded(junk, part), '|'),
     }};
 
@@ -121,17 +120,6 @@ pub fn base_note(input: &mut &str) -> winnow::ModalResult<BaseNote> {
     let high = letter.is_ascii_lowercase();
 
     Ok(BaseNote { note, high })
-}
-
-pub fn integer<T: FromStr>(input: &mut &str) -> winnow::ModalResult<T>
-where
-    T::Err: Send + Sync + std::error::Error + 'static,
-{
-    let signed = T::from_str("-1").is_ok();
-
-    take_while(.., |c: char| c.is_ascii_digit() || (signed && c == '-'))
-        .try_map(T::from_str)
-        .parse_next(input)
 }
 
 const NOT_JUNK: &str = concat!(
