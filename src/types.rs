@@ -9,12 +9,21 @@ pub struct Score {
 }
 
 impl Score {
-    pub fn beat_count(&self) -> u32 {
-        self.parts.iter().map(|p| p.beat_count()).max().unwrap_or(1)
+    pub fn initial_tempo(&self) -> Tempo {
+        Tempo {
+            note_value: Quaver::Whole,
+            beat: self.bpm.unwrap_or(75),
+        }
     }
 
-    pub fn beat_duration(&self) -> Duration {
-        Duration::from_secs(15) / self.bpm.unwrap_or(75)
+    pub fn duration(&self) -> Duration {
+        let tempo = self.initial_tempo();
+        let beat = tempo.duration_of(Quaver::Quarter);
+        self.parts
+            .iter()
+            .map(|p| p.duration(beat))
+            .max()
+            .unwrap_or_default()
     }
 }
 
@@ -24,16 +33,60 @@ pub struct Part {
     pub items: Vec<PartItem>,
 }
 
-impl Part {
-    pub fn events(&self) -> impl Iterator<Item = &Event> {
-        self.items.iter().filter_map(|item| match item {
-            PartItem::Event(e) => Some(e),
-            _ => None,
-        })
-    }
+macro_rules! match_instrument {
+    ($enum:expr, |$ty_var:ident| $value:expr) => {{
+        use $crate::output::Instrument as _;
+        match $enum {
+            $crate::types::Instrument::Beep => {
+                type $ty_var = $crate::instruments::Beep;
+                $value
+            }
+            $crate::types::Instrument::Keyboard => {
+                type $ty_var = $crate::instruments::Keyboard;
+                $value
+            }
+            $crate::types::Instrument::Bell => {
+                type $ty_var = $crate::instruments::Bells;
+                $value
+            }
+            $crate::types::Instrument::Waterphone => {
+                type $ty_var = $crate::instruments::Waterphone;
+                $value
+            }
+            $crate::types::Instrument::Snare => {
+                type $ty_var = $crate::instruments::Snare;
+                $value
+            }
+        }
+    }};
+}
 
-    pub fn beat_count(&self) -> u32 {
-        self.events().map(|e| e.beat_count()).sum()
+impl Part {
+    pub fn duration(&self, mut beat: Duration) -> Duration {
+        let mut dur = Duration::ZERO;
+
+        for item in &self.items {
+            let is_last = std::ptr::eq(item, self.items.last().unwrap());
+
+            match item {
+                PartItem::Event(event) => {
+                    if is_last {
+                        if let Some(i) = self.instrument {
+                            match_instrument!(i, |T| if T::HAS_SUSTAIN {
+                                dur += T::audio_duration(event, beat);
+                                continue;
+                            });
+                        }
+                    }
+
+                    dur += beat * event.beat_count()
+                }
+                PartItem::Tempo(tempo) => beat = tempo.duration_of(Quaver::Quarter),
+                PartItem::Dynamic(_) => {}
+            }
+        }
+
+        dur
     }
 }
 
@@ -56,6 +109,67 @@ pub enum Instrument {
 pub enum PartItem {
     Event(Event),
     Dynamic(Dynamic),
+    Tempo(Tempo),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tempo {
+    pub note_value: Quaver,
+    pub beat: u32,
+}
+
+const MINUTE: Duration = Duration::from_secs(60);
+
+impl Tempo {
+    pub const fn new(note_value: Quaver, beat: u32) -> Self {
+        Self { note_value, beat }
+    }
+
+    pub fn duration_of(&self, note: Quaver) -> Duration {
+        let fraction = note.to_f32() / self.note_value.to_f32();
+        MINUTE.mul_f32(fraction) / self.beat
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn tempo_sanity_check() {
+    // default inherited from muzak.el
+    let t = Tempo::new(Quaver::Whole, 75);
+    assert_eq!(t.duration_of(Quaver::Quarter), MINUTE / 300);
+
+    // A score starting with "60"
+    let t = Tempo::new(Quaver::Whole, 60);
+    assert_eq!(t.duration_of(Quaver::Whole), MINUTE / 60);
+    assert_eq!(t.duration_of(Quaver::Quarter), MINUTE / 240);
+
+    // 𝅘𝅥=90 (anywhere in the score)
+    let t = Tempo::new(Quaver::Quarter, 90);
+    assert_eq!(t.duration_of(Quaver::Half), MINUTE / 45);
+    assert_eq!(t.duration_of(Quaver::Quarter), MINUTE / 90);
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Quaver {
+    Double,
+    Whole,
+    Half,
+    Quarter,
+    Eighth,
+    Sixteenth, // MuseScore Studio 4.6 already stops at eighths for metronome marks
+}
+
+impl Quaver {
+    pub const fn to_f32(&self) -> f32 {
+        match self {
+            Self::Double => 2.0,
+            Self::Whole => 1.0,
+            Self::Half => 0.5,
+            Self::Quarter => 0.25,
+            Self::Eighth => 0.125,
+            Self::Sixteenth => 0.06125,
+        }
+    }
 }
 
 pub use crate::compile::output::Dynamic;

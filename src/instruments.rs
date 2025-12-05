@@ -43,6 +43,10 @@ impl Instrument for Bells {
             .with_effect(Dampen)
             .take_duration(duration + Duration::from_secs(4))
     }
+
+    fn audio_duration(event: &crate::types::Event, beat_duration: Duration) -> Duration {
+        event.beat_count() * beat_duration + Duration::from_secs(4)
+    }
 }
 
 // (cons 'keyboard (muzak/make-instrument :waveform 'square :effects '(linear)))
@@ -83,5 +87,9 @@ impl Instrument for Snare {
         WhiteNoise::new(SAMPLE_RATE)
             .linear_gain_ramp(dur, 1.0, 0.0, true)
             .take_duration(dur)
+    }
+
+    fn audio_duration(_: &crate::types::Event, _: Duration) -> Duration {
+        Duration::from_millis(150)
     }
 }

@@ -11,11 +11,12 @@ mod parse;
 
 pub mod instruments;
 pub mod output;
+#[macro_use]
 pub mod types;
 
 pub use compile::compile;
 
-use output::Instrument;
+use crate::types::Quaver;
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
@@ -33,32 +34,23 @@ pub struct MixOptions {
 }
 
 pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'static, Duration) {
-    let beat = score.beat_duration();
+    let beat = score.initial_tempo().duration_of(Quaver::Quarter);
 
     let mut mixer = output::Chord::new();
 
     let track_limit = options.max_tracks.map_or(usize::MAX, |n| n.get());
 
     for (i, part) in score.parts.iter().enumerate().take(track_limit) {
-        let play_fn = match match part.instrument {
+        let instrument = match part.instrument {
             Some(x) => x,
             None if i == 0 => types::Instrument::Beep,
             None => types::Instrument::Keyboard,
-        } {
-            types::Instrument::Beep => instruments::Beep::play_part,
-            types::Instrument::Keyboard => instruments::Keyboard::play_part,
-            types::Instrument::Bell => instruments::Bells::play_part,
-            types::Instrument::Waterphone => instruments::Waterphone::play_part,
-            types::Instrument::Snare => instruments::Snare::play_part,
         };
+        let play_fn = match_instrument!(instrument, |T| T::play_part);
         mixer.add(play_fn(part, beat));
     }
 
-    let desired_duration = beat * score.beat_count();
-    let true_duration = options
-        .max_duration
-        .unwrap_or(Duration::MAX)
-        .min(desired_duration);
+    let true_duration = score.duration();
 
     let mixed = mixer.amplify(options.volume).take_duration(true_duration);
 

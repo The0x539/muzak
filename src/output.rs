@@ -1,7 +1,7 @@
 use rodio::source::*;
 use std::time::Duration;
 
-use crate::types::PartItem;
+use crate::types::{PartItem, Quaver};
 
 pub trait Instrument {
     type Note: Source<Item = f32> + Send + 'static;
@@ -41,11 +41,18 @@ pub trait Instrument {
             (false, None) => Box::new(play_part_without_sustain::<Self>(part, d)),
         }
     }
+
+    /// The expected duration of the entire audio source produced for an event.
+    /// For instruments without sustain, this will be the same as the [`Duration`]
+    /// returned by [`Self::play_chord`].
+    fn audio_duration(event: &crate::types::Event, beat_duration: Duration) -> Duration {
+        event.beat_count() * beat_duration
+    }
 }
 
 pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
-    beat_duration: Duration,
+    mut beat: Duration,
 ) -> impl Source<Item = f32> + 'static {
     let mut track = Chord::new();
     let mut offset = Duration::ZERO;
@@ -54,13 +61,14 @@ pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
     for item in &part.items {
         match item {
             PartItem::Event(event) => {
-                let (chord, event_duration) = T::play_chord(event, beat_duration);
+                let (chord, event_duration) = T::play_chord(event, beat);
                 if !event.notes().is_empty() {
                     track.add(chord.amplify(volume).delay(offset));
                 }
                 offset += event_duration;
             }
             PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
+            PartItem::Tempo(tempo) => beat = tempo.duration_of(Quaver::Quarter),
         }
     }
 
@@ -69,7 +77,7 @@ pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
 
 pub(crate) fn play_part_without_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
-    beat_duration: Duration,
+    mut beat: Duration,
 ) -> impl Source<Item = f32> + 'static {
     let mut events = vec![];
 
@@ -78,12 +86,13 @@ pub(crate) fn play_part_without_sustain<T: Instrument + ?Sized>(
     for item in &part.items {
         match item {
             PartItem::Event(event) => {
-                let (chord, duration) = T::play_chord(event, beat_duration);
+                let (chord, duration) = T::play_chord(event, beat);
                 // Notes already adjust themselves to the necessary duration,
                 // but rests do not and would otherwise be infinite.
                 events.push(chord.amplify(volume).take_duration(duration));
             }
             PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
+            PartItem::Tempo(tempo) => beat = tempo.duration_of(Quaver::Quarter),
         }
     }
 

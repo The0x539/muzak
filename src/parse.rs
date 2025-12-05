@@ -67,11 +67,28 @@ parsers! {
         "𝓯" => Forte,
     };
 
+    pub quaver: Quaver = literals! {
+        Quaver;
+        '𝅜' => Double,
+        '𝅝' => Whole,
+        '𝅗𝅥' => Half,
+        '𝅘𝅥' => Quarter,
+        '𝅘𝅥𝅮' => Eighth,
+        '𝅘𝅥𝅯' => Sixteenth,
+    };
+
+    pub tempo: Tempo = seq! {Tempo {
+        note_value: quaver,
+        _: '='.void(),
+        beat: dec_uint,
+    }};
+
     pub part_item: PartItem = alt((
         event.map(PartItem::Event),
         // a dynamic MUST have whitespace or something after it,
         // so as to avoid cases such as 𝓯𝓯𝓯𝓯 being interpreted as two consecutive fortissimos
         terminated(dynamic, junk).map(PartItem::Dynamic),
+        tempo.map(PartItem::Tempo),
     ));
 
     pub instrument: Instrument = literals! {
@@ -128,12 +145,13 @@ const NOT_JUNK: &str = concat!(
     "abcdefg",
     // BPM
     "0123456789",
-    // Part dividers, chords, rests, and note-extensions on new lines
-    "|[/~🛏",
+    // Control
+    "|[/~",
+    "🛏",
+    "𝅜𝅝𝅗𝅥𝅘𝅥𝅘𝅥𝅮𝅘𝅥𝅯",
+    "𝓹𝓶𝓯",
     // Instruments
     "∿🎹🔔🌊🥁",
-    // Dynamics
-    "𝓹𝓶𝓯",
     // Comments
     "(",
 );
