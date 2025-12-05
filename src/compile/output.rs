@@ -54,6 +54,14 @@ impl Score {
                 m2.metronome = m2.metronome.or(m1.metronome);
             }
         }
+
+        for part in &mut self.parts {
+            for measure in &mut part.measures {
+                if let Some(metronome) = &mut measure.metronome {
+                    metronome.beat *= divisions;
+                }
+            }
+        }
     }
 
     // yeah just double everything, maybe later we can double the specific bits that need it
