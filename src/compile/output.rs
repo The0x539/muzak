@@ -300,7 +300,7 @@ pub struct Event {
 }
 
 impl Event {
-    pub const fn is_rest(&self) -> bool {
+    pub fn is_rest(&self) -> bool {
         self.notes.is_empty()
     }
 }
