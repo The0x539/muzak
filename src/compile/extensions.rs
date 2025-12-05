@@ -1,9 +1,11 @@
+use super::output::{Metronome, Quaver};
 use musicxml::datatypes::NoteTypeValue;
 
 #[allow(dead_code)]
 pub trait NoteTypeValueExt: Sized {
     fn double(&self) -> Self;
     fn half(&self) -> Self;
+    fn to_quaver(&self) -> Quaver;
     fn as_float(&self) -> f64;
     fn from_denominator(value: u8) -> Option<Self>;
 }
@@ -47,6 +49,18 @@ impl NoteTypeValueExt for NoteTypeValue {
         }
     }
 
+    fn to_quaver(&self) -> Quaver {
+        match self {
+            NoteTypeValue::Breve => Quaver::Double,
+            NoteTypeValue::Whole => Quaver::Whole,
+            NoteTypeValue::Half => Quaver::Half,
+            NoteTypeValue::Quarter => Quaver::Quarter,
+            NoteTypeValue::Eighth => Quaver::Eighth,
+            NoteTypeValue::Sixteenth => Quaver::Sixteenth,
+            _ => panic!("unsupported tempo unit: {self:?}"),
+        }
+    }
+
     fn as_float(&self) -> f64 {
         let n: f64 = [
             0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0,
@@ -79,5 +93,31 @@ impl JustGetTheValue for Option<musicxml::elements::Staff> {
     type Value = u32;
     fn value(&self) -> Self::Value {
         self.as_ref().map_or(1, |x| x.content.0)
+    }
+}
+
+impl JustGetTheValue for musicxml::elements::PerMinute {
+    type Value = u32;
+    fn value(&self) -> Self::Value {
+        self.content.parse().unwrap()
+    }
+}
+
+impl JustGetTheValue for musicxml::elements::Metronome {
+    type Value = Metronome;
+
+    fn value(&self) -> Self::Value {
+        let musicxml::elements::MetronomeContents::BeatBased(beat) = &self.content else {
+            panic!("unhandled metronome type: {:?}", self.content);
+        };
+
+        let musicxml::elements::BeatEquation::BPM(bpm) = &beat.equals else {
+            panic!("unhandled beat equation: {:?}", beat.equals);
+        };
+
+        Metronome {
+            note_value: beat.beat_unit.content.to_quaver(),
+            beat: bpm.value(),
+        }
     }
 }

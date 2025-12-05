@@ -112,13 +112,9 @@ pub enum PartItem {
     Tempo(Tempo),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tempo {
-    pub note_value: Quaver,
-    pub beat: u32,
-}
-
 const MINUTE: Duration = Duration::from_secs(60);
+
+pub use crate::compile::output::{Dynamic, Metronome as Tempo, Quaver};
 
 impl Tempo {
     pub const fn new(note_value: Quaver, beat: u32) -> Self {
@@ -149,30 +145,18 @@ fn tempo_sanity_check() {
     assert_eq!(t.duration_of(Quaver::Quarter), MINUTE / 90);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Quaver {
-    Double,
-    Whole,
-    Half,
-    Quarter,
-    Eighth,
-    Sixteenth, // MuseScore Studio 4.6 already stops at eighths for metronome marks
-}
-
 impl Quaver {
     pub const fn to_f32(&self) -> f32 {
         match self {
             Self::Double => 2.0,
             Self::Whole => 1.0,
-            Self::Half => 0.5,
-            Self::Quarter => 0.25,
-            Self::Eighth => 0.125,
-            Self::Sixteenth => 0.06125,
+            Self::Half => 1.0 / 2.0,
+            Self::Quarter => 1.0 / 4.0,
+            Self::Eighth => 1.0 / 8.0,
+            Self::Sixteenth => 1.0 / 16.0,
         }
     }
 }
-
-pub use crate::compile::output::Dynamic;
 
 impl Dynamic {
     pub fn to_multiplier(self) -> f32 {

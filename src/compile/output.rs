@@ -1,45 +1,63 @@
 use std::fmt::{Display, Formatter, Write};
 
 use musicxml::datatypes::Step;
-use strum::{EnumCount, IntoStaticStr, VariantArray};
+use strum::{Display, EnumCount, IntoStaticStr, VariantArray};
 
 use crate::types::Instrument;
 
 #[derive(Debug, Default, Clone)]
 pub struct Score {
     pub parts: Vec<Part>,
-    pub bpm: u32,
+    pub bpm: Option<u32>,
 }
 
 impl Score {
-    pub fn unify_divisions(&mut self) -> u32 {
-        let max = self
-            .parts
-            .iter()
-            .flat_map(|p| &p.measures)
-            .filter_map(|m| m.divisions)
-            .max()
-            .unwrap();
+    pub fn cleanup(&mut self) {
+        self.parts.retain(|p| !p.is_empty());
 
         for part in &mut self.parts {
-            let mut ratio = max; // assume the default divisions count is 1
-            for measure in &mut part.measures {
-                if let Some(n) = &mut measure.divisions {
-                    assert_eq!(max % *n, 0);
-                    ratio = max / *n;
-                    *n = max;
-                };
+            part.apply_transpose();
+        }
 
-                for event in measure.events_mut() {
-                    event.duration *= ratio;
-                }
+        self.adjust_metronomes();
+        self.fix_carryover_chords();
+        self.fix_hyper_staccato();
+    }
+
+    fn adjust_metronomes(&mut self) {
+        if self.parts.is_empty() {
+            return;
+        }
+
+        // Confirm a rather convenient assumption about how measures are divided.
+        // If someone has a score that can contradict this assumption, I'll fix it,
+        // but this will rather annoying.
+        let divisions = self.parts[0].measures[0].divisions.unwrap();
+        for part in &self.parts {
+            // Make It Through fails this for some reason
+            //assert_eq!(part.measures.len(), self.parts[0].measures.len());
+            assert_eq!(part.measures[0].divisions, Some(divisions));
+            for measure in &part.measures[1..] {
+                assert_eq!(measure.divisions, None);
             }
         }
 
-        max
+        if let Some(m) = self.parts[0].measures[0].metronome.take() {
+            self.bpm = Some(divisions * (m.beat as f32 * m.note_value.to_f32()) as u32);
+        }
+
+        for i in 1..self.parts.len() {
+            let [src_part, dst_part] = &mut self.parts[i - 1..=i] else {
+                unreachable!()
+            };
+            for (m1, m2) in std::iter::zip(&mut src_part.measures, &mut dst_part.measures) {
+                m2.metronome = m2.metronome.or(m1.metronome);
+            }
+        }
     }
 
-    pub fn fix_hyper_staccato(&mut self) {
+    // yeah just double everything, maybe later we can double the specific bits that need it
+    fn fix_hyper_staccato(&mut self) {
         let events = self
             .parts
             .iter_mut()
@@ -53,10 +71,15 @@ impl Score {
         }
 
         events.into_iter().for_each(|e| e.duration *= 2);
-        self.bpm *= 2;
+
+        self.parts
+            .iter_mut()
+            .flat_map(|p| &mut p.measures)
+            .filter_map(|m| m.metronome.as_mut())
+            .for_each(|m| m.beat *= 2)
     }
 
-    pub fn fix_carryover_chords(&mut self) {
+    fn fix_carryover_chords(&mut self) {
         for part in &mut self.parts {
             for i in 1..part.measures.len() {
                 let [prev, cur] = &mut part.measures[i - 1..=i] else {
@@ -68,7 +91,23 @@ impl Score {
                     continue;
                 }
 
-                let prev_event = prev.last_event();
+                let Some(prev_event) = prev.try_last_event() else {
+                    // assume it's a three-measure tie.
+                    // more than that? idk, stop doing that
+                    if i > 2 {
+                        let carryover = std::mem::take(&mut cur.carryover);
+                        let prev_prev = &mut part.measures[i - 2];
+                        let prev_event = prev_prev.last_event();
+                        assert!(
+                            prev_event.notes.len() >= 1,
+                            "unsupported: three-measure non-chord?"
+                        );
+                        prev_event.duration += carryover;
+                    }
+
+                    continue;
+                };
+
                 if prev_event.notes.len() <= 1 {
                     // not a chord, so we don't care
                     continue;
@@ -104,6 +143,10 @@ pub struct Part {
     pub measures: Vec<Measure>,
 }
 impl Part {
+    pub fn is_empty(&self) -> bool {
+        self.measures.iter().all(|m| m.is_empty())
+    }
+
     pub fn add_measure(&mut self) {
         self.measures.push(Default::default())
     }
@@ -143,9 +186,14 @@ pub struct Measure {
     pub carryover: u32,
     pub items: Vec<MeasureItem>,
     pub divisions: Option<u32>,
+    pub metronome: Option<Metronome>,
 }
 
 impl Measure {
+    pub fn is_empty(&self) -> bool {
+        self.carryover == 0 && self.events().all(|i| i.is_rest())
+    }
+
     pub fn events(&self) -> impl DoubleEndedIterator<Item = &Event> {
         self.items.iter().filter_map(|item| match item {
             MeasureItem::Event(event) => Some(event),
@@ -216,11 +264,45 @@ pub enum Dynamic {
     Fortissimo,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Display, Copy, Clone, PartialEq, Eq, IntoStaticStr, VariantArray, EnumCount)]
+pub enum Quaver {
+    #[strum(to_string = "𝅜")]
+    Double,
+    #[strum(to_string = "𝅝")]
+    Whole,
+    #[strum(to_string = "𝅗𝅥")]
+    Half,
+    #[strum(to_string = "𝅘𝅥")]
+    Quarter,
+    #[strum(to_string = "𝅘𝅥𝅮")]
+    Eighth,
+    #[strum(to_string = "𝅘𝅥𝅯")]
+    Sixteenth, // MuseScore Studio 4.6 already stops at eighths for metronome marks
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Metronome {
+    pub note_value: Quaver,
+    pub beat: u32,
+}
+
+impl Display for Metronome {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}={}", self.note_value, self.beat)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
     pub duration: u32,
     pub notes: Vec<Note>,
     pub staccato: bool,
+}
+
+impl Event {
+    pub const fn is_rest(&self) -> bool {
+        self.notes.is_empty()
+    }
 }
 
 impl Default for Event {
@@ -395,8 +477,18 @@ impl Display for MeasureItem {
 
 impl Display for Measure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.metronome.is_some() && self.carryover > 0 {
+            eprintln!(
+                "warning: measure has both carryover and a metronome marking. this may end poorly."
+            )
+        }
+
         for _ in 0..self.carryover {
             f.write_char('~')?;
+        }
+
+        if let Some(m) = &self.metronome {
+            writeln!(f, "{m}")?;
         }
 
         if self.events().all(|e| e.notes.is_empty()) && self.carryover == 0 {
@@ -431,7 +523,9 @@ impl Display for Part {
 
 impl Display for Score {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.bpm)?;
+        if let Some(bpm) = self.bpm {
+            writeln!(f, "{bpm}")?;
+        }
         for (i, part) in self.parts.iter().enumerate() {
             if i > 0 {
                 f.write_str("\n|\n")?;

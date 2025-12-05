@@ -25,16 +25,7 @@ pub fn compile(xml: &str, padding: u8, rotation: u8, legacy_semitones: bool) -> 
     let mut state = State::default();
     let mut score = state.score(&mxml);
 
-    for part in &mut score.parts {
-        part.apply_transpose();
-    }
-
-    let divisions = score.unify_divisions();
-    score.fix_carryover_chords();
-    score.fix_hyper_staccato();
-
-    // I have no idea how right or wrong this is.
-    score.bpm = (score.bpm * divisions) / 4;
+    score.cleanup();
 
     for _ in 0..padding {
         score.parts.insert(0, empty_part());
@@ -80,7 +71,6 @@ pub(crate) mod output;
 
 #[derive(Default)]
 struct State {
-    bpm: Option<(f64, u32)>,
     score: output::Score,
     repeat_start: usize,
     first_ending_length: usize,
@@ -144,8 +134,8 @@ impl State {
                 self.voices_processed.insert(voice);
             }
         }
-        let (beat_unit, bpm) = self.bpm.unwrap_or((0.25, 120));
-        self.score.bpm = (bpm as f64 * 4.0 * beat_unit) as u32;
+        // let (beat_unit, bpm) = self.bpm.unwrap_or((0.25, 120));
+        // self.score.bpm = (bpm as f64 * 4.0 * beat_unit) as u32;
 
         std::mem::take(&mut self.score)
     }
@@ -252,19 +242,19 @@ impl State {
     }
 
     fn metronome(&mut self, metronome: &Metronome) {
-        match &metronome.content {
-            MetronomeContents::BeatBased(beat) => {
-                let unit = beat.beat_unit.content;
-                let count = match &beat.equals {
-                    BeatEquation::BPM(bpm) => bpm.content.parse::<u32>().unwrap(),
-                    e => panic!("unhandled beat equation: {e:?}"),
-                };
-                let new_bpm = Some((unit.as_float(), count));
-                assert!(self.bpm.is_none() || self.bpm == new_bpm);
-                self.bpm = new_bpm;
-            }
-            m => panic!("unhandled metronome type {m:?}"),
-        }
+        assert_eq!(
+            self.score.last_measure().events().next(),
+            None,
+            "unsupported: metronome marking in the middle of a measure"
+        );
+        assert_eq!(
+            self.score.last_measure().metronome,
+            None,
+            "unsupported: multiple metronome markings in one measure"
+        );
+
+        let metronome = metronome.value();
+        self.score.last_measure().metronome = Some(metronome);
     }
 
     fn barline(&mut self, barline: &Barline, measure_number: &str) {
@@ -312,7 +302,7 @@ impl State {
 
     fn note(&mut self, note: &Note) {
         let NoteType::Normal(info) = &note.content.info else {
-            println!("eep, non-normal note");
+            // eprintln!("eep, non-normal note: {:?}", note.content.info);
             return;
         };
 
