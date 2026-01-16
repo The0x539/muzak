@@ -93,11 +93,13 @@ parsers! {
 
     pub instrument: Instrument = literals! {
         Instrument;
-        '∿' => Beep,
-        '🎹' => Keyboard,
-        '🔔' => Bell,
-        '🌊' => Waterphone,
-        '🥁' => Snare,
+        "∿" => Beep,
+        "🎹" => Keyboard,
+        "🔔" => Bell,
+        "🌊" => Waterphone,
+        "🥁" => Snare,
+        "🛢️" => Kick,
+        "🛢" => Kick,
      };
 
     pub part: Part =  seq! {Part{
@@ -151,7 +153,7 @@ const NOT_JUNK: &str = concat!(
     "𝅜𝅝𝅗𝅥𝅘𝅥𝅘𝅥𝅮𝅘𝅥𝅯",
     "𝓹𝓶𝓯",
     // Instruments
-    "∿🎹🔔🌊🥁",
+    "∿🎹🔔🌊🥁🛢",
     // Comments
     "(",
 );

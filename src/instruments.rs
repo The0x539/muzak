@@ -1,4 +1,4 @@
-use crate::output::{ApplyEffect, Effect, Instrument, SourceExt};
+use crate::output::{ApplyEffect, Chord, Effect, Instrument, SourceExt};
 use rodio::source::*;
 use std::time::Duration;
 
@@ -13,10 +13,10 @@ fn wave(function: Function, frequency: f32) -> SignalGenerator {
 }
 
 // (cons 'dampen (lambda (s _) (format "pow(2.72,-10*%.1f*(t-%.1f))" (or muzak//note-duration muzak//default-duration) s)))
-pub struct Dampen;
+pub struct Dampen(f32);
 impl Effect for Dampen {
     fn calculate(&self, elapsed: f32) -> f32 {
-        std::f32::consts::E.powf(-2.0 * elapsed)
+        std::f32::consts::E.powf(-2.0 * elapsed * self.0)
     }
 }
 
@@ -40,7 +40,7 @@ impl Instrument for Bells {
 
     fn play_note(frequency: f32, duration: Duration) -> Self::Note {
         wave(Function::Square, frequency)
-            .with_effect(Dampen)
+            .with_effect(Dampen(1.0))
             .take_duration(duration + Duration::from_secs(4))
     }
 
@@ -91,5 +91,26 @@ impl Instrument for Snare {
 
     fn audio_duration(_: &crate::types::Event, _: Duration) -> Duration {
         Duration::from_millis(150)
+    }
+}
+
+pub struct Kick;
+impl Instrument for Kick {
+    type Note = TakeDuration<ApplyEffect<Chord<Chirp>, Dampen>>;
+    const HAS_SUSTAIN: bool = true;
+    const LOW_PASS: Option<u32> = None;
+    const AMP: f32 = 2.0;
+
+    fn play_note(_frequency: f32, _duration: Duration) -> Self::Note {
+        let dur = Duration::from_millis(200);
+        let mut chord = Chord::new();
+        chord.add(chirp(SAMPLE_RATE, 120.0, 55.0, dur));
+        chord.add(chirp(SAMPLE_RATE, 80.0, 55.0, dur));
+        chord.add(chirp(SAMPLE_RATE, 40.0, 55.0, dur));
+        chord.with_effect(Dampen(8.0)).take_duration(dur)
+    }
+
+    fn audio_duration(_: &crate::types::Event, _: Duration) -> Duration {
+        Duration::from_millis(200)
     }
 }
