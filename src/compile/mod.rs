@@ -112,8 +112,7 @@ impl State {
                 ("key", crate::types::Instrument::Keyboard),
                 ("bell", crate::types::Instrument::Bell),
                 ("waterphone", crate::types::Instrument::Waterphone),
-                ("snare", crate::types::Instrument::Drum),
-                ("drum", crate::types::Instrument::Drum),
+                ("snare", crate::types::Instrument::Snare),
             ]
             .into_iter()
             .find(|(keyword, _)| part_name.contains(keyword))

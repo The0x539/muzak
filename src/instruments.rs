@@ -75,8 +75,8 @@ impl Instrument for Waterphone {
     }
 }
 
-pub struct Drum;
-impl Instrument for Drum {
+pub struct Snare;
+impl Instrument for Snare {
     type Note = TakeDuration<LinearGainRamp<WhiteNoise>>;
     const HAS_SUSTAIN: bool = true;
     const LOW_PASS: Option<u32> = None;

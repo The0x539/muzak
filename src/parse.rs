@@ -97,7 +97,7 @@ parsers! {
         '🎹' => Keyboard,
         '🔔' => Bell,
         '🌊' => Waterphone,
-        '🥁' => Drum,
+        '🥁' => Snare,
      };
 
     pub part: Part =  seq! {Part{
