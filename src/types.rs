@@ -53,8 +53,8 @@ macro_rules! match_instrument {
                 type $ty_var = $crate::instruments::Waterphone;
                 $value
             }
-            $crate::types::Instrument::Snare => {
-                type $ty_var = $crate::instruments::Snare;
+            $crate::types::Instrument::Drum => {
+                type $ty_var = $crate::instruments::Drum;
                 $value
             }
         }
@@ -102,7 +102,7 @@ pub enum Instrument {
     #[strum(to_string = "🌊")]
     Waterphone,
     #[strum(to_string = "🥁")]
-    Snare,
+    Drum,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
