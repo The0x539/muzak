@@ -67,6 +67,8 @@ fn empty_part() -> output::Part {
 mod extensions;
 use extensions::*;
 
+use crate::types::Instrument;
+
 pub(crate) mod output;
 
 #[derive(Default)]
@@ -89,7 +91,34 @@ struct State {
     // Used to keep track of a measure's longest duration across voices,
     // in order to pad a measure with a rest if the current voice doesn't appear in that measure
     measure_pos: u32,
+
+    // Used to split a "drum kit" MusicXML part into one muzak tracks for each supported instrument.
+    drum_kit: DrumKitState,
 }
+
+#[derive(Default)]
+struct DrumKitState {
+    active: bool,
+    drums: Vec<(String, Instrument)>,
+    current: Option<String>,
+}
+
+const INSTRUMENT_KEYWORDS: &[(&str, Instrument)] = &[
+    ("beep", Instrument::Beep),
+    ("sine", Instrument::Beep),
+    ("key", Instrument::Keyboard),
+    ("bell", Instrument::Bell),
+    ("waterphone", Instrument::Waterphone),
+    ("snare", Instrument::Snare),
+    ("kick", Instrument::Kick),
+    ("bass", Instrument::Kick),
+];
+
+const DRUM_KEYWORDS: &[(&str, Instrument)] = &[
+    ("snare", Instrument::Snare),
+    ("kick", Instrument::Kick),
+    ("bass", Instrument::Kick),
+];
 
 impl State {
     fn score(&mut self, score: &ScorePartwise) -> output::Score {
@@ -106,17 +135,26 @@ impl State {
 
         for (part, metadata) in std::iter::zip(&score.content.part, part_list) {
             let part_name = metadata.content.part_name.content.to_lowercase();
-            let instrument = [
-                ("beep", crate::types::Instrument::Beep),
-                ("sine", crate::types::Instrument::Beep),
-                ("key", crate::types::Instrument::Keyboard),
-                ("bell", crate::types::Instrument::Bell),
-                ("waterphone", crate::types::Instrument::Waterphone),
-                ("snare", crate::types::Instrument::Snare),
-            ]
-            .into_iter()
-            .find(|(keyword, _)| part_name.contains(keyword))
-            .map(|(_, v)| v);
+            let instrument = INSTRUMENT_KEYWORDS
+                .iter()
+                .find(|(keyword, _)| part_name.contains(keyword))
+                .map(|(_, v)| *v);
+
+            self.drum_kit.active = instrument.is_none() && part_name.contains("drum");
+            if self.drum_kit.active {
+                self.drum_kit.drums.clear();
+                self.drum_kit.current = None;
+                for drum in &metadata.content.score_instrument {
+                    let drum_name = drum.content.instrument_name.content.to_lowercase();
+                    for &(keyword, drum_type) in DRUM_KEYWORDS {
+                        if drum_name.contains(keyword) {
+                            let drum_id = drum.attributes.id.0.clone();
+                            self.drum_kit.drums.push((drum_id, drum_type));
+                            break;
+                        }
+                    }
+                }
+            }
 
             self.voices_seen.clear();
             self.voices_seen.insert((1, 1));
@@ -130,7 +168,9 @@ impl State {
             {
                 self.current_voice = voice;
                 self.part(part);
-                self.score.last_part().instrument = instrument;
+                if let Some(instrument) = instrument {
+                    self.score.last_part().instrument = Some(instrument);
+                }
                 self.voices_processed.insert(voice);
             }
         }
@@ -141,6 +181,17 @@ impl State {
     }
 
     fn part(&mut self, part: &Part) {
+        if self.drum_kit.active && self.drum_kit.current.is_none() {
+            // For a "drum kit" track, split it into one part for each supported drum type.
+            for (id, instrument) in self.drum_kit.drums.clone() {
+                self.drum_kit.current = Some(id);
+                self.part(part);
+                self.score.last_part().instrument = Some(instrument);
+            }
+            self.drum_kit.current = None;
+            return;
+        }
+
         self.score.add_part();
         self.repeat_start = 0;
         self.first_ending_length = 0;
@@ -313,6 +364,8 @@ impl State {
         }
 
         let output_note = match info.audible {
+            AudibleType::Rest(..) => None,
+            _ if self.should_ignore_drum(note) => None,
             AudibleType::Pitch(pitch) => Some(output::Note {
                 step: pitch.content.step.content,
                 semitone: pitch.content.alter.map_or(0, |a| a.content.0),
@@ -323,7 +376,6 @@ impl State {
                 semitone: 0,
                 octave: u.content.display_octave.content.0.into(),
             }),
-            AudibleType::Rest(..) => None,
         };
 
         let staff = note.content.staff.value();
@@ -393,5 +445,25 @@ impl State {
         if articulations.any(|a| matches!(a, ArticulationsType::Staccato(_))) {
             event.staccato = true;
         }
+    }
+
+    // Check whether the note's instrument matches that of the drum currently being compiled.
+    // If not, it is to be replaced with a rest.
+    fn should_ignore_drum(&self, note: &Note) -> bool {
+        if !self.drum_kit.active {
+            return false;
+        }
+
+        let Some(current_drum) = self.drum_kit.current.as_deref() else {
+            return false;
+        };
+
+        for instrument in &note.content.instrument {
+            if instrument.attributes.id.0 == current_drum {
+                return false;
+            }
+        }
+
+        true
     }
 }
