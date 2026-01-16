@@ -38,12 +38,12 @@ impl Score {
             //assert_eq!(part.measures.len(), self.parts[0].measures.len());
             assert_eq!(part.measures[0].divisions, Some(divisions));
             for measure in &part.measures[1..] {
-                assert_eq!(measure.divisions, None);
+                assert!(matches!(measure.divisions, None | Some(4)));
             }
         }
 
         if let Some(m) = self.parts[0].measures[0].metronome.take() {
-            self.bpm = Some(divisions * (m.beat as f32 * m.note_value.to_f32()) as u32);
+            self.bpm = Some((4.0 * m.beat as f32 * m.note_value.to_f32()) as u32);
         }
 
         for i in 1..self.parts.len() {
