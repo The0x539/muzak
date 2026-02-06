@@ -84,11 +84,14 @@ impl Score {
             *n *= 2;
         }
 
-        self.parts
-            .iter_mut()
-            .flat_map(|p| &mut p.measures)
-            .filter_map(|m| m.metronome.as_mut())
-            .for_each(|m| m.beat *= 2)
+        for part in &mut self.parts {
+            for measure in &mut part.measures {
+                measure.carryover *= 2;
+                if let Some(metronome) = &mut measure.metronome {
+                    metronome.beat *= 2;
+                }
+            }
+        }
     }
 
     fn fix_carryover_chords(&mut self) {
