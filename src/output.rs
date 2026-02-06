@@ -54,25 +54,100 @@ pub(crate) fn play_part_with_sustain<T: Instrument + ?Sized>(
     part: &crate::types::Part,
     mut beat: Duration,
 ) -> impl Source<Item = f32> + 'static {
-    let mut track = Chord::new();
+    #[derive(Copy, Clone)]
+    struct TimeSpan {
+        start: Duration,
+        len: Duration,
+    }
+
+    impl TimeSpan {
+        fn end(&self) -> Duration {
+            self.start + self.len
+        }
+
+        fn intersects(&self, other: &Self) -> bool {
+            !(self.start > other.end() || other.start > self.end())
+        }
+    }
+
+    impl std::ops::BitOr for TimeSpan {
+        type Output = Self;
+        fn bitor(self, other: Self) -> Self::Output {
+            let start = self.start.min(other.start);
+            let end = self.end().max(other.end());
+            let len = end - start;
+            Self { start, len }
+        }
+    }
+
+    struct NoteGroup<N> {
+        span: TimeSpan,
+        notes: Vec<(Duration, N)>,
+    }
+
+    let mut groups: Vec<NoteGroup<_>> = vec![];
+
     let mut offset = Duration::ZERO;
     let mut volume = T::AMP;
 
     for item in &part.items {
-        match item {
-            PartItem::Event(event) => {
-                let (chord, event_duration) = T::play_chord(event, beat);
-                if !event.notes().is_empty() {
-                    track.add(chord.amplify(volume).delay(offset));
-                }
-                offset += event_duration;
+        // Assume "event" is the common case.
+        // Structure control flow accordingly to reduce nesting.
+        let event = match item {
+            PartItem::Event(e) => e,
+            PartItem::Dynamic(dynamic) => {
+                volume = dynamic.to_multiplier() * T::AMP;
+                continue;
             }
-            PartItem::Dynamic(dynamic) => volume = dynamic.to_multiplier() * T::AMP,
-            PartItem::Tempo(tempo) => beat = tempo.duration_of(Quaver::Quarter),
+            PartItem::Tempo(tempo) => {
+                beat = tempo.duration_of(Quaver::Quarter);
+                continue;
+            }
+        };
+
+        if event.notes().is_empty() {
+            offset += event.beat_count() * beat;
+            continue;
         }
+
+        let (chord, event_duration) = T::play_chord(event, beat);
+        let chord = chord.amplify(volume);
+
+        let span = TimeSpan {
+            start: offset,
+            len: T::audio_duration(event, beat),
+        };
+
+        if let Some(group) = groups.last_mut().filter(|g| g.span.intersects(&span)) {
+            group.span = group.span | span;
+            group.notes.push((offset, chord));
+        } else {
+            groups.push(NoteGroup {
+                span,
+                notes: vec![(offset, chord)],
+            });
+        }
+
+        offset += event_duration;
     }
 
-    track
+    let mut prev_end = Duration::ZERO;
+
+    let mut sequence = vec![];
+
+    for group in groups {
+        assert!(group.span.start >= prev_end);
+        let gap = group.span.start - prev_end;
+        let mut group_mixer = Chord::new();
+        for (absolute, note) in group.notes {
+            let relative = absolute - group.span.start;
+            group_mixer.add(note.delay(relative));
+        }
+        sequence.push(group_mixer.delay(gap));
+        prev_end = group.span.end();
+    }
+
+    rodio::source::from_iter(sequence)
 }
 
 pub(crate) fn play_part_without_sustain<T: Instrument + ?Sized>(
