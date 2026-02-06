@@ -80,6 +80,10 @@ impl Score {
 
         events.into_iter().for_each(|e| e.duration *= 2);
 
+        if let Some(n) = &mut self.bpm {
+            *n *= 2;
+        }
+
         self.parts
             .iter_mut()
             .flat_map(|p| &mut p.measures)
