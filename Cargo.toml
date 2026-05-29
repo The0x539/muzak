@@ -3,6 +3,7 @@ name = "muzak"
 version = "2.4.0"
 edition = "2021"
 rust-version = "1.83"
+license = "AGPL-3.0-only"
 
 [dependencies]
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "f2cac6eaaead1ee017f7eb82b4f0c6bc14039ae3", features = ["noise"] }
