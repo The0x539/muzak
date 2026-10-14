@@ -2,7 +2,7 @@ use crate::output::{ApplyEffect, Chord, Effect, Instrument, SourceExt};
 use rodio::{nz, source::*};
 use std::time::Duration;
 
-const SAMPLE_RATE: rodio::SampleRate = nz!(48000);
+pub const SAMPLE_RATE: rodio::SampleRate = nz!(48000);
 
 // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
 // (cons 'square (lambda (f) (format "ceil(sin(t*%.2f))" (* 2 float-pi f))))

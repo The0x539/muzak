@@ -25,6 +25,16 @@ impl Score {
             .max()
             .unwrap_or_default()
     }
+
+    // TODO: An option to keep some parts together as a group
+    pub fn isolate_parts(self) -> Vec<Self> {
+        let bpm = self.bpm;
+        self.parts
+            .into_iter()
+            .map(|part| vec![part])
+            .map(|parts| Self { bpm, parts })
+            .collect()
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

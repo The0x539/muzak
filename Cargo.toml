@@ -19,11 +19,13 @@ tempfile = { version = "3.19.1", optional = true }
 
 ureq = { version = "3.0.10", optional = true, features = ["cookies"] }
 dotenvy = { version = "0.15.7", optional = true }
+uiua = { version = "0.19.1", optional = true, default-features = false, features = ["native_sys"] }
 
 [features]
-default = ["build-binary", "submit"]
+default = ["build-binary", "submit", "video"]
 build-binary = ["dialoguer", "wavers", "clap", "dep:bytemuck", "dep:tempfile"]
 submit = ["build-binary", "dep:ureq", "dep:dotenvy"]
+video = ["build-binary", "dep:uiua"]
 
 [lib]
 name = "muzak"

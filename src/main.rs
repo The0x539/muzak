@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "video", feature(unix_mkfifo))]
+
 use std::fs::File;
 use std::io::{IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
@@ -7,6 +9,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use wavers::WavHeader;
+
+#[cfg(feature = "video")]
+mod video;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about)]
@@ -32,6 +37,8 @@ enum Command {
     Submit,
     /// Run a MuseScore file through the first two steps of the pipeline: mscz -> musicxml -> bells
     Phase1(CompileOpts),
+    #[cfg(feature = "video")]
+    Video(video::VideoOpts),
 }
 
 #[derive(Parser, Debug, Copy, Clone)]
@@ -112,6 +119,10 @@ fn run(args: Args) -> Result<()> {
         }
         #[cfg(feature = "submit")]
         Command::Submit => submit_song(&input)?,
+        Command::Video(opts) => {
+            let score = muzak::parse(&input).expect("Could not parse score");
+            video::render(score, opts)?;
+        }
         Command::Phase1(..) => unreachable!(),
     }
 
