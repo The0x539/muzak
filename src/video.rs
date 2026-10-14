@@ -35,7 +35,10 @@ pub fn render(score: Score, opts: VideoOpts) -> super::Result<()> {
     }
 
     let mut tracks = Vec::<Vec<f64>>::new();
-    for part in parts {
+    for (i, mut part) in parts.into_iter().enumerate() {
+        if i != 0 && part.parts[0].instrument.is_none() {
+            part.parts[0].instrument = Some(muzak::types::Instrument::Keyboard);
+        }
         let (source, _duration) = muzak::mix(&part, opts.play_opts.clone().into());
         tracks.push(source.into_iter().map(f64::from).collect());
     }
