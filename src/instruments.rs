@@ -1,8 +1,8 @@
 use crate::output::{ApplyEffect, Chord, Effect, Instrument, SourceExt};
-use rodio::source::*;
+use rodio::{nz, source::*};
 use std::time::Duration;
 
-const SAMPLE_RATE: rodio::SampleRate = 48000;
+const SAMPLE_RATE: rodio::SampleRate = nz!(48000);
 
 // (cons 'sine (lambda (f) (format "0.7*sin(t*%.2f)" (* 2 float-pi f))))
 // (cons 'square (lambda (f) (format "ceil(sin(t*%.2f))" (* 2 float-pi f))))
@@ -74,6 +74,8 @@ impl Instrument for Waterphone {
             .take_duration(duration)
     }
 }
+
+type WhiteNoise = noise::WhiteUniform;
 
 pub struct Snare;
 impl Instrument for Snare {

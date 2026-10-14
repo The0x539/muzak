@@ -2,11 +2,11 @@
 name = "muzak"
 version = "2.4.0"
 edition = "2021"
-rust-version = "1.83"
+rust-version = "1.92"
 license = "AGPL-3.0-only"
 
 [dependencies]
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "f2cac6eaaead1ee017f7eb82b4f0c6bc14039ae3", features = ["noise"] }
+rodio = { version = "0.23.0", default-features = false, features = ["playback", "noise"] }
 strum = { version = "0.27.0", features = ["derive"] }
 winnow = "0.7.2"
 musicxml = { git = "https://github.com/The0x539/musicxml", branch = "copy-clone" }

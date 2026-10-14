@@ -169,7 +169,7 @@ fn write_wav(
     mut writer: impl Write,
     source: impl rodio::Source<Item = f32> + Send + 'static,
 ) -> Result<()> {
-    let sample_rate = source.sample_rate();
+    let sample_rate = source.sample_rate().get();
     let mut samples: Vec<f32> = source.collect();
 
     if cfg!(target_endian = "big") {

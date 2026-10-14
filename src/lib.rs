@@ -63,8 +63,8 @@ pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'st
 }
 
 pub fn play(source: impl Source<Item = f32> + Send + 'static, duration: Duration) {
-    let stream_handle = rodio::OutputStreamBuilder::open_default_stream().unwrap();
-    let output_sink = stream_handle.mixer();
+    let sink_handle = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
+    let output_sink = sink_handle.mixer();
     output_sink.add(source);
     std::thread::sleep(duration);
 }

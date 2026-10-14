@@ -1,5 +1,5 @@
-use rodio::source::*;
-use std::time::Duration;
+use rodio::{nz, source::*};
+use std::{num::NonZero, time::Duration};
 
 use crate::types::{PartItem, Quaver};
 
@@ -225,12 +225,12 @@ impl<I: Source<Item = f32>> Source for Chord<I> {
         None
     }
 
-    fn channels(&self) -> u16 {
-        self.notes.first().map_or(1, |n| n.channels())
+    fn channels(&self) -> NonZero<u16> {
+        self.notes.first().map_or(nz!(1), |n| n.channels())
     }
 
-    fn sample_rate(&self) -> u32 {
-        self.notes.first().map_or(48000, |n| n.sample_rate())
+    fn sample_rate(&self) -> NonZero<u32> {
+        self.notes.first().map_or(nz!(48000), |n| n.sample_rate())
     }
 
     fn total_duration(&self) -> Option<Duration> {
@@ -279,8 +279,8 @@ impl<I: Source, E: Effect> Iterator for ApplyEffect<I, E> {
         let factor = self.effect.calculate(self.elapsed);
 
         self.sample_idx += 1;
-        if self.sample_idx % (self.channels() as u64) == 0 {
-            self.elapsed += 1.0 / (self.input.sample_rate() as f32);
+        if self.sample_idx % (self.channels().get() as u64) == 0 {
+            self.elapsed += 1.0 / (self.input.sample_rate().get() as f32);
         }
 
         self.input.next().map(|value| value * factor)
