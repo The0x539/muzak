@@ -6,27 +6,22 @@ GetFrameIndices ← (
   ⁅×⊙-₁÷⟜⇡
 )
 
-Encode ← ⇌°⋯ ⍜(⊣°↯)(˜⊂¯8⌈÷8)
+Pad    ← ⬚0↙ ⊂100 ⍜÷₈⌈⊣⊸△
+Encode ← °⋯ ↯∞_¯8 ⇌ Pad
 
-PlotCurve ← ↧⊓⌞⊞≤⊞≥ ⊓⇡(⊃↧↥⊸(⊂⊸⊢↘¯1))
+# frame ? height samples
+PlotCurve ← ↧⊓⌞⊞≤⊞≥ ⊓⇡(⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
 
-For! ← ◌⍥(+1◡^0)⊙0
+# frame ? position audio
+Render ← PlotCurve 100 ⬚50↙800↘
 
-Render ← (
-  ⬚0↙800↘⊡
-  ⁅×99
-  PlotCurve 100
-  ⬚0↙100
-)
+Remap ← ⁅×99 ÷⊸/↥ -⊸/↧ ⌝↘800
 
 # ? fps tuning sampleRate audio frameSink
 Main ← (
   ⁅×⊃(⋅÷|GetFrameIndices⊸⊙⊙⊙⧻)
-  ⊙(⌝↘800)
-  ⊙(÷⊸/↥ -⊸/↧)
-
-  ◌◌For!(&w Encode Render) ⊸⧻
-  &cl
+  ⊙Remap
+  &cl⊸≡⌟₂(&w Encode Render)
 )
 
 ≡wait≡spawnMain
