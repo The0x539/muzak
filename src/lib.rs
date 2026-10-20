@@ -7,7 +7,7 @@ pub use rodio;
 
 mod compile;
 mod fmt;
-mod parse;
+pub mod parse;
 
 pub mod instruments;
 pub mod output;

@@ -1,9 +1,9 @@
 use clap::Parser;
-use muzak::types::Score;
+use muzak::types::{Note, Score};
 use std::fs::Permissions;
 use std::io::Write;
 use std::os::unix::fs::{mkfifo, PermissionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use uiua::Uiua;
 
@@ -11,11 +11,11 @@ use uiua::Uiua;
 pub struct VideoOpts {
     #[command(flatten)]
     play_opts: super::PlayOpts,
-    #[arg(long, short)]
-    output_path: PathBuf,
+    #[arg(long, value_parser = parse_note, default_value = "C4", num_args=1..)]
+    strobe: Vec<f64>,
 }
 
-pub fn render(score: Score, opts: VideoOpts) -> super::Result<()> {
+pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
     let parts = score.clone().isolate_parts();
 
     let mut fifo_handles = vec![];
@@ -47,20 +47,24 @@ pub fn render(score: Score, opts: VideoOpts) -> super::Result<()> {
         track.resize(len, 0.0);
     }
 
+    let num_tracks = tracks.len();
+
     let uiua_tracks =
         uiua::Array::from_row_arrays(tracks.into_iter().map(uiua::Array::from_iter), &uiua)?;
-
-    // this should probably be per-track
-    // let c5 = 523.251;
-    let g4 = 391.995;
 
     uiua.push(uiua::Array::from_iter(fifo_handles));
     uiua.push(uiua_tracks);
     uiua.push(muzak::instruments::SAMPLE_RATE.get() as f64);
-    uiua.push(g4);
+    if opts.strobe.len() == 1 {
+        uiua.push(opts.strobe[0]);
+    } else {
+        let num_strobe = opts.strobe.len();
+        assert_eq!(num_strobe, num_tracks, "Must specify either 1 global strobe frequency or 1 per track, but {num_strobe} frequencies were specified for a score with {num_tracks} tracks.");
+        uiua.push(uiua::Array::from_iter(opts.strobe));
+    }
     uiua.push(60);
 
-    let mut ffmpeg = spawn_ffmpeg(&fifo_paths, &opts.output_path)?;
+    let mut ffmpeg = spawn_ffmpeg(&fifo_paths, output_path)?;
 
     let mut ffmpeg_stdin = ffmpeg.stdin.take().unwrap();
     let audio_thread = std::thread::spawn(move || {
@@ -109,8 +113,8 @@ fn spawn_ffmpeg(
     cmd.arg("-filter_complex")
         .arg(format!("vstack=inputs={}", fifo_paths.len()));
 
-    cmd.args(["-preset:v", "medium"])
-        .args(["-crf", "28"])
+    cmd.args(["-preset:v", "slower"])
+        .args(["-crf", "25"])
         // .args(["-c:a", "pcm_s16le"])
         .arg(out_path)
         .stdin(Stdio::piped())
@@ -118,4 +122,50 @@ fn spawn_ffmpeg(
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(From::from)
+}
+
+#[derive(Debug)]
+struct Erm(winnow::error::ContextError);
+
+impl std::fmt::Display for Erm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for Erm {}
+
+fn parse_note(arg: &str) -> winnow::Result<f64, Erm> {
+    use muzak::types::Accidental;
+    use winnow::ascii::{dec_int, dec_uint};
+    use winnow::combinator::{alt, empty, opt, seq};
+    use winnow::Parser as _;
+
+    fn accidental(input: &mut &str) -> winnow::ModalResult<Accidental> {
+        alt((
+            '♭'.value(Accidental::Flat),
+            'b'.value(Accidental::Flat),
+            '♮'.value(Accidental::Natural),
+            '♯'.value(Accidental::Sharp),
+            '#'.value(Accidental::Sharp),
+        ))
+        .parse_next(input)
+    }
+
+    fn note(input: &mut &str) -> winnow::ModalResult<Note> {
+        seq! {Note{
+            base: muzak::parse::base_note,
+            accidental: opt(accidental),
+            octave: opt(dec_int),
+            duration: empty.value(1),
+        }}
+        .parse_next(input)
+    }
+
+    alt((
+        note.map(|n| n.to_frequency() as f64),
+        dec_uint.map(|n: u32| n as f64),
+    ))
+    .parse(arg)
+    .map_err(|e| Erm(e.into_inner()))
 }

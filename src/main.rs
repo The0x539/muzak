@@ -120,8 +120,13 @@ fn run(args: Args) -> Result<()> {
         #[cfg(feature = "submit")]
         Command::Submit => submit_song(&input)?,
         Command::Video(opts) => {
+            // TODO: Application-error handling is a mess. I've neglected it greatly.
+            let output_path = args
+                .output_file
+                .as_deref()
+                .expect("An output path is required for `muzak video`");
             let score = muzak::parse(&input).expect("Could not parse score");
-            video::render(score, opts)?;
+            video::render(score, opts, output_path)?;
         }
         Command::Phase1(..) => unreachable!(),
     }
