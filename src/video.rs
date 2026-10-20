@@ -68,10 +68,17 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 
     let mut ffmpeg_stdin = ffmpeg.stdin.take().unwrap();
     let audio_thread = std::thread::spawn(move || {
-        let (audio, _duration) = muzak::mix(&score, opts.play_opts.into());
-        // TODO: Feed ffmpeg big chunks but not the whole thing all at once
-        let audio = audio.collect::<Vec<_>>();
-        _ = ffmpeg_stdin.write_all(bytemuck::cast_slice(&audio[..]));
+        let (mut audio, _duration) = muzak::mix(&score, opts.play_opts.into());
+        const CHUNK_SIZE: usize = 8192;
+        let mut buf = Vec::<f32>::with_capacity(CHUNK_SIZE);
+        loop {
+            buf.clear();
+            buf.extend(audio.by_ref().take(CHUNK_SIZE));
+            _ = ffmpeg_stdin.write_all(bytemuck::cast_slice(&buf[..]));
+            if buf.len() < CHUNK_SIZE {
+                break;
+            }
+        }
     });
 
     uiua.run_str(include_str!("./video.ua"))?;
