@@ -6,33 +6,44 @@ GetFrameIndices ← (
   ⁅×  # 0..samples
 )
 
+MinMag ← ⨬⋅∘⊙◌ ◡(>∩⌵)
+
 # Find "features" in the audio, currently defined as positive zero-crossings
 Features ← ˜⊂0 >⊃↘₋₁↘₁ ±
 
-# indices ? indices audio
-SnapFrameIndices ← (
-  ⊙Features
-  # TODO: Search in both directions
-  + ⟜≡⌟(⬚0⊢⊚↙800↘)
-)
+# offset ? index features radius
+🔎 ← ⬚0⊢⊚ ˜↙↘ ↥₀
+# offset ? index features radius
+🔍 ← ¯⬚0⊢⊚⇌ ˜↘ ⊙(↥₀˜-) ⟜⧻ ↙+₁ ↥₀ # god this was a nightmare
 
-Pad    ← ⬚0↙ ⊂100 ⍜÷₈⌈⊣⊸△
+# indices ? indices features radius
+🔜 ← +MinMag⤚⊃≡🔍≡🔎 ⊙¤
+
+# indices ? indices audio width
+SnapFrameIndices ← ⍜-🔜 ⊃(⋅⋅÷₂|∘|⋅Features|/↥⧈-)
+
+Pad ← ⬚0↙ ˜⊂⊙˜∩∘ ⍜÷₈⌈ ⊸⧋⧻
+# frame ? frame height
 Encode ← °⋯ ↯∞_¯8 ⇌ Pad
 
 # frame ? height samples
 PlotCurve ← ↧⊓⌞⊞≤⊞≥ ⊓⇡(⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
 
-# frame ? position audio
-Render ← PlotCurve 100 ⬚50↙800↘
+# samples ? position audio width height
+🍕 ← ⬚÷₂↙ ⊃(⋅⋅∘|⋅∘|∘) ↘
 
-Remap ← ⁅×-₁100 ÷⊸/↥ -⊸/↧ ⌝↘800
+# frame ? position audio width height
+Render ← PlotCurve⤙🍕
 
-# ? fps sampleRate audio frameSink
+# audio ? audio width height
+Remap ← ⁅×⊙-₁ ÷⊸/↥ -⊸/↧ ˜⌝↘
+
+# ? fps sampleRate audio width height frameSink
 Main ← (
   GetFrameIndices⊙⊙⊸⧻
-  ⍜-⊸SnapFrameIndices ÷₂800
-  ⊙Remap
-  &cl⊸≡⌟₂(&w Encode Render)
+  ⊸₂SnapFrameIndices
+  ⊙⊸₂Remap
+  &cl⊸≡(&w Encode ⊸Render) ⊙¤
 )
 
 ⊙◌ # TODO: make dynamic strobe optional

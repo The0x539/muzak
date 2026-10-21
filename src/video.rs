@@ -53,6 +53,8 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
         uiua::Array::from_row_arrays(tracks.into_iter().map(uiua::Array::from_iter), &uiua)?;
 
     uiua.push(uiua::Array::from_iter(fifo_handles));
+    uiua.push(100);
+    uiua.push(800);
     uiua.push(uiua_tracks);
     uiua.push(muzak::instruments::SAMPLE_RATE.get() as f64);
     if opts.strobe.len() == 1 {
