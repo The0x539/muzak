@@ -1,10 +1,13 @@
 use clap::Parser;
 use muzak::types::{Note, Score};
 use std::io::{self, Write};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::Path;
 use std::process::Stdio;
 use uiua::Uiua;
+
+#[cfg(unix)]
+use command_fds::CommandFdExt;
 
 mod script_backend;
 
@@ -62,7 +65,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     }
     uiua.push(60);
 
-    let mut ffmpeg = spawn_ffmpeg(&frame_sources, asr, output_path)?;
+    let mut ffmpeg = spawn_ffmpeg(frame_sources, asr, output_path)?;
 
     let mut ffmpeg_stdin = ffmpeg.stdin.take().unwrap();
     let audio_thread = std::thread::spawn(move || {
@@ -80,8 +83,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     });
 
     uiua.run_str(include_str!("./video.ua"))?;
-    drop(uiua); // Close the frame sink handles
-    drop(frame_sources); // Close the frame source handles
+    drop(uiua); // Close the frame sink handles (Should I move this responsibility back into the Uiua code?)
 
     audio_thread.join().unwrap();
     ffmpeg.wait()?;
@@ -90,7 +92,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 }
 
 fn spawn_ffmpeg(
-    frame_sources: &[io::PipeReader],
+    frame_sources: Vec<io::PipeReader>,
     asr: u32,
     out_path: &Path,
 ) -> super::Result<std::process::Child> {
@@ -98,29 +100,29 @@ fn spawn_ffmpeg(
 
     cmd.arg("-hide_banner").arg("-y");
 
-    for source in frame_sources {
-        // TODO: inherit file descriptors (hopefully the "pipe protocol" works as desired on all platforms)
-        let pid = std::process::id();
-        let fd = source.as_raw_fd();
-        let procfs_path = format!("/proc/{pid}/fd/{fd}");
+    let num_tracks = frame_sources.len();
 
+    for source in &frame_sources {
         // Input video
         cmd.args(["-f", "rawvideo"])
             .args(["-s", "800x100"])
             .args(["-pix_fmt", "monob"])
-            .args(["-r", "60"])
-            .arg("-i")
-            .arg(procfs_path);
+            .args(["-r", "60"]);
+
+        #[cfg(unix)]
+        cmd.args(["-i", &format!("pipe:{}", source.as_raw_fd())]);
     }
+
+    #[cfg(unix)]
+    cmd.preserved_fds(frame_sources.into_iter().map(OwnedFd::from).collect());
 
     // Input audio
     cmd.args(["-f", "f32le"])
-        .arg("-ar")
-        .arg(asr.to_string())
+        .args(["-ar", &asr.to_string()])
         .args(["-i", "-"]);
 
-    cmd.arg("-filter_complex")
-        .arg(format!("vstack=inputs={}", frame_sources.len()));
+    // Compositing
+    cmd.args(["-filter_complex", &format!("vstack=inputs={num_tracks}")]);
 
     cmd.args(["-preset:v", "slower"])
         .args(["-crf", "25"])

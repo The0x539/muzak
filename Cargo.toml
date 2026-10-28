@@ -22,11 +22,14 @@ dotenvy = { version = "0.15.7", optional = true }
 uiua = { version = "0.19.1", optional = true, default-features = false }
 terminal_size = { version = "0.4.4", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+command-fds = { version = "0.3.3", optional = true }
+
 [features]
 default = ["build-binary", "submit", "video"]
 build-binary = ["dialoguer", "wavers", "clap", "dep:bytemuck", "dep:tempfile"]
 submit = ["build-binary", "dep:ureq", "dep:dotenvy"]
-video = ["build-binary", "dep:uiua", "dep:terminal_size"]
+video = ["build-binary", "dep:uiua", "dep:terminal_size", "dep:command-fds"]
 
 [lib]
 name = "muzak"
