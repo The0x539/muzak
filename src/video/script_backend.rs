@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::io::{self, Write as _};
-use std::os::fd::AsRawFd;
+
+use super::{FrameSink, Ipc, IpcImpl};
 
 pub struct MuzakSysBackend {
     pub audio_sample_rate: u32,
-    frame_sinks: HashMap<u64, io::PipeWriter>,
+    frame_sinks: HashMap<u64, FrameSink>,
 }
 
 impl MuzakSysBackend {
@@ -15,8 +16,8 @@ impl MuzakSysBackend {
         }
     }
 
-    pub fn add_sink(&mut self, sink: io::PipeWriter) -> uiua::Handle {
-        let fd = sink.as_raw_fd() as u64;
+    pub fn add_sink(&mut self, sink: FrameSink) -> uiua::Handle {
+        let fd = IpcImpl::sink_as_raw(&sink);
         self.frame_sinks.insert(fd, sink);
         uiua::Handle(fd)
     }

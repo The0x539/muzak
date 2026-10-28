@@ -25,11 +25,20 @@ terminal_size = { version = "0.4.4", optional = true }
 [target.'cfg(unix)'.dependencies]
 command-fds = { version = "0.3.3", optional = true }
 
+[target.'cfg(windows)'.dependencies]
+interprocess = { version = "2.4.7", optional = true }
+
 [features]
 default = ["build-binary", "submit", "video"]
 build-binary = ["dialoguer", "wavers", "clap", "dep:bytemuck", "dep:tempfile"]
 submit = ["build-binary", "dep:ureq", "dep:dotenvy"]
-video = ["build-binary", "dep:uiua", "dep:terminal_size", "dep:command-fds"]
+video = [
+  "build-binary",
+  "dep:uiua",
+  "dep:terminal_size",
+  "dep:command-fds",
+  "dep:interprocess",
+]
 
 [lib]
 name = "muzak"
