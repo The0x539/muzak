@@ -31,8 +31,16 @@ impl Score {
         let bpm = self.bpm;
         self.parts
             .into_iter()
-            .map(|part| vec![part])
-            .map(|parts| Self { bpm, parts })
+            .enumerate()
+            .map(|(i, mut part)| {
+                if i > 0 && part.instrument.is_none() {
+                    part.instrument = Some(Instrument::Keyboard);
+                }
+                Self {
+                    bpm,
+                    parts: vec![part],
+                }
+            })
             .collect()
     }
 }

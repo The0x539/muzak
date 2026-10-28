@@ -51,7 +51,7 @@ Main ← (
   GetFrameIndices⊙⊙⊸⧻
   ⊸₂SnapFrameIndices
   ⊙⊸₂Remap
-  &cl⊸≡(&w Encode ⊸Render) ⊙¤
+  ≡(&w Encode ⊸Render) ⊙¤
 )
 
 ⊙◌ # TODO: make dynamic strobe optional

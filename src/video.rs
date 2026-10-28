@@ -1,11 +1,12 @@
 use clap::Parser;
 use muzak::types::{Note, Score};
-use std::fs::Permissions;
-use std::io::Write;
-use std::os::unix::fs::{mkfifo, PermissionsExt};
+use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::Stdio;
 use uiua::Uiua;
+
+mod script_backend;
 
 #[derive(Parser, Debug, Clone)]
 pub struct VideoOpts {
@@ -18,27 +19,19 @@ pub struct VideoOpts {
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
     let parts = score.clone().isolate_parts();
 
-    let mut fifo_handles = vec![];
-    let mut fifo_paths = vec![];
-    let pid = std::process::id();
-    let perms = Permissions::from_mode(0o600);
+    let asr = muzak::instruments::SAMPLE_RATE.get();
+    let mut backend = script_backend::MuzakSysBackend::new(asr);
 
-    let mut uiua = Uiua::with_native_sys();
-
-    for i in 0..parts.len() {
-        let path = format!("/tmp/muzak-fifo-{pid}-{i:02}");
-        mkfifo(&path, perms.clone())?;
-
-        let handle = uiua.backend().open_file(path.as_ref(), true).unwrap();
-        fifo_handles.push(handle.0 as f64);
-        fifo_paths.push(path);
+    let mut frame_sources = vec![]; // io::PipeReader values to pass to ffmpeg
+    let mut frame_sinks = vec![]; // uiua::Handle values (which map to io::PipeWriter values) to pass to Uiua
+    for _ in 0..parts.len() {
+        let (source, sink) = std::io::pipe()?;
+        frame_sources.push(source);
+        frame_sinks.push(backend.add_sink(sink));
     }
 
     let mut tracks = Vec::<Vec<f64>>::new();
-    for (i, mut part) in parts.into_iter().enumerate() {
-        if i != 0 && part.parts[0].instrument.is_none() {
-            part.parts[0].instrument = Some(muzak::types::Instrument::Keyboard);
-        }
+    for part in parts {
         let (source, _duration) = muzak::mix(&part, opts.play_opts.clone().into());
         tracks.push(source.into_iter().map(f64::from).collect());
     }
@@ -48,11 +41,14 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     }
 
     let num_tracks = tracks.len();
+    let mut uiua = Uiua::with_backend(backend);
 
     let uiua_tracks =
         uiua::Array::from_row_arrays(tracks.into_iter().map(uiua::Array::from_iter), &uiua)?;
 
-    uiua.push(uiua::Array::from_iter(fifo_handles));
+    uiua.push(uiua::Array::from_iter(
+        frame_sinks.into_iter().map(|n| n.0 as f64),
+    ));
     uiua.push(100);
     uiua.push(800);
     uiua.push(uiua_tracks);
@@ -66,7 +62,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     }
     uiua.push(60);
 
-    let mut ffmpeg = spawn_ffmpeg(&fifo_paths, output_path)?;
+    let mut ffmpeg = spawn_ffmpeg(&frame_sources, asr, output_path)?;
 
     let mut ffmpeg_stdin = ffmpeg.stdin.take().unwrap();
     let audio_thread = std::thread::spawn(move || {
@@ -84,10 +80,8 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     });
 
     uiua.run_str(include_str!("./video.ua"))?;
-
-    for path in fifo_paths {
-        std::fs::remove_file(path)?;
-    }
+    drop(uiua); // Close the frame sink handles
+    drop(frame_sources); // Close the frame source handles
 
     audio_thread.join().unwrap();
     ffmpeg.wait()?;
@@ -96,31 +90,37 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 }
 
 fn spawn_ffmpeg(
-    fifo_paths: &[impl AsRef<Path>],
+    frame_sources: &[io::PipeReader],
+    asr: u32,
     out_path: &Path,
 ) -> super::Result<std::process::Child> {
     let mut cmd = std::process::Command::new("ffmpeg");
 
     cmd.arg("-hide_banner").arg("-y");
 
-    for path in fifo_paths {
+    for source in frame_sources {
+        // TODO: inherit file descriptors (hopefully the "pipe protocol" works as desired on all platforms)
+        let pid = std::process::id();
+        let fd = source.as_raw_fd();
+        let procfs_path = format!("/proc/{pid}/fd/{fd}");
+
         // Input video
         cmd.args(["-f", "rawvideo"])
             .args(["-s", "800x100"])
             .args(["-pix_fmt", "monob"])
             .args(["-r", "60"])
             .arg("-i")
-            .arg(path.as_ref());
+            .arg(procfs_path);
     }
 
     // Input audio
     cmd.args(["-f", "f32le"])
         .arg("-ar")
-        .arg(muzak::instruments::SAMPLE_RATE.get().to_string())
+        .arg(asr.to_string())
         .args(["-i", "-"]);
 
     cmd.arg("-filter_complex")
-        .arg(format!("vstack=inputs={}", fifo_paths.len()));
+        .arg(format!("vstack=inputs={}", frame_sources.len()));
 
     cmd.args(["-preset:v", "slower"])
         .args(["-crf", "25"])

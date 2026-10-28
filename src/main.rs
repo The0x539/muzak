@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "video", feature(unix_mkfifo))]
-
 use std::fs::File;
 use std::io::{IsTerminal, Read, Write};
 use std::num::NonZeroUsize;
