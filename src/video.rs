@@ -47,6 +47,8 @@ pub struct VideoOpts {
     strobe: Vec<f64>,
     #[arg(long, num_args = 2, default_values_t = [800, 100])]
     resolution: Vec<usize>,
+    #[arg(long, default_value_t = 60)]
+    framerate: usize,
 }
 
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
@@ -93,7 +95,8 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 
     let asr = muzak::instruments::SAMPLE_RATE.get();
 
-    let (mut ffmpeg, frame_sinks) = spawn_ffmpeg(num_tracks, asr, resolution, output_path)?;
+    let (mut ffmpeg, frame_sinks) =
+        spawn_ffmpeg(num_tracks, asr, resolution, opts.framerate, output_path)?;
 
     let mut backend = script_backend::MuzakSysBackend::new(asr);
 
@@ -115,7 +118,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
         assert_eq!(num_strobe, num_tracks, "Must specify either 1 global strobe frequency or 1 per track, but {num_strobe} frequencies were specified for a score with {num_tracks} tracks.");
         uiua.push(uiua::Array::from_iter(opts.strobe));
     }
-    uiua.push(60);
+    uiua.push(opts.framerate);
 
     let mut ffmpeg_stdin = ffmpeg.stdin.take().unwrap();
     let audio_thread = std::thread::spawn(move || {
@@ -147,6 +150,7 @@ fn spawn_ffmpeg(
     num_tracks: usize,
     asr: u32,
     (width, height): (usize, usize),
+    framerate: usize,
     out_path: &Path,
 ) -> super::Result<(std::process::Child, Vec<FrameSink>)> {
     let mut cmd = std::process::Command::new("ffmpeg");
@@ -161,7 +165,7 @@ fn spawn_ffmpeg(
         cmd.args(["-f", "rawvideo"])
             .args(["-s", &format!("{width}x{height}")])
             .args(["-pix_fmt", "monob"])
-            .args(["-r", "60"]);
+            .args(["-r", &framerate.to_string()]);
 
         intermediates.push(IpcImpl::register_source(&mut cmd, i)?);
     }
