@@ -18,20 +18,19 @@ Features ← ˜⊂0 >⊃↘₋₁↘₁ ±
 🪚 ← ↙↧⊙⊸⧻
 
 # Find the distance to the nearest `feature` at/after `index`, up to `radius`.
-# TODO: Return NaN or inf on failure. Convert to 0 *after* passing through MinMag.
-# Reason: The current behavior produces a bug where if probing in ONE direction fails,
-# then the successful search in the other direction gets discarded.
 # offset ? index features radius
-🔎 ← ⬚0⊢⊚ ˜🪚↘
+🔎 ← ⬚∞⊢⊚ ˜🪚↘
 # Find the distance to the nearest `feature` at/before `index`, up to `radius`.
 # offset ? index features radius
-🔍 ← ¯⬚0⊣⊚ ˜↘ ⊙(↥₀˜-)⟜⧻ 🪚+₁
+🔍 ← ¯⬚∞⊣⊚ ˜↘ ⊙(↥₀˜-)⟜⧻ 🪚+₁
+
+InfToZero ← ⨬∘⋅0 =∞⊸⌵
 
 # indices ? indices features radius
-🔜 ← +MinMag⤚⊃≡🔍≡🔎 ⊙¤
+🔜 ← + InfToZero MinMag ⤚⊃≡🔍≡🔎 ⊙¤
 
 # indices ? indices audio width
-SnapFrameIndices ← ⍜+🔜 ⊃(⋅⋅÷₂|∘|⋅Features|/↥⧈-)
+SnapFrameIndices ← ⍜+🔜 ⊃(⋅⋅÷₂|∘|⋅Features|÷₂/↥⧈-)
 
 # Add zeroes to a frame to ensure its dimensions are height×8ℤ
 # frame ? frame height
