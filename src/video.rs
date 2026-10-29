@@ -1,8 +1,14 @@
 use clap::Parser;
+use ecow::EcoVec;
+use itertools::Itertools;
 use muzak::types::{Note, Score};
+use rayon::prelude::*;
+use rodio::Source;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use uiua::Uiua;
 
 mod script_backend;
@@ -44,36 +50,60 @@ pub struct VideoOpts {
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
     let parts = score.clone().isolate_parts();
 
-    let mut tracks = Vec::<Vec<f64>>::new();
+    let resolution = (800, 100);
+
+    let mut sources = vec![];
+    let mut duration = Duration::ZERO;
     for part in parts {
-        let (source, _duration) = muzak::mix(&part, opts.play_opts.clone().into());
-        tracks.push(source.into_iter().map(f64::from).collect());
+        let (source, part_duration) = muzak::mix(&part, opts.play_opts.clone().into());
+        duration = duration.max(part_duration);
+        sources.push(source);
     }
-    let len = tracks.iter().map(|t| t.len()).max().unwrap();
+
+    let num_tracks = sources.len();
+
+    let estimated_length = duration.as_secs_f64() * sources[0].sample_rate().get() as f64;
+    let prealloc_size = (estimated_length * 1.01 + resolution.0 as f64).ceil() as usize;
+
+    println!("Generating individual track audio...");
+    let max_track_len = AtomicUsize::new(0);
+    let mut tracks = sources
+        .into_par_iter()
+        .map(|source| {
+            let samples = source.into_iter().map(f64::from);
+            let mut buf = EcoVec::<f64>::from_elem(0.0, prealloc_size);
+            let len = resolution.0 + buf.make_mut()[resolution.0..].iter_mut().set_from(samples);
+            assert!(len < buf.len());
+            max_track_len.fetch_max(len, Ordering::Relaxed);
+            buf
+        })
+        .collect::<Vec<_>>();
+
+    let max_track_len = max_track_len.into_inner();
     for track in &mut tracks {
-        track.resize(len, 0.0);
+        track.truncate(max_track_len);
     }
+
+    let uiua_tracks = tracks
+        .into_iter()
+        .map(|track| uiua::Boxed(uiua::Value::Num(uiua::Array::new(track.len(), track))))
+        .collect::<uiua::Array<uiua::Boxed>>();
 
     let asr = muzak::instruments::SAMPLE_RATE.get();
-    let num_tracks = tracks.len();
 
-    let (mut ffmpeg, frame_sinks) = spawn_ffmpeg(num_tracks, asr, output_path)?;
+    let (mut ffmpeg, frame_sinks) = spawn_ffmpeg(num_tracks, asr, resolution, output_path)?;
 
     let mut backend = script_backend::MuzakSysBackend::new(asr);
 
-    let mut uiua_frame_sinks = vec![];
-    for sink in frame_sinks {
-        uiua_frame_sinks.push(backend.add_sink(sink).0 as f64);
-    }
+    let uiua_frame_sinks = frame_sinks
+        .into_iter()
+        .map(|sink| backend.add_sink(sink).0 as f64)
+        .collect_vec();
 
     let mut uiua = Uiua::with_backend(backend);
 
-    let uiua_tracks =
-        uiua::Array::from_row_arrays(tracks.into_iter().map(uiua::Array::from_iter), &uiua)?;
-
     uiua.push(uiua::Array::from_iter(uiua_frame_sinks));
-    uiua.push(100);
-    uiua.push(800);
+    uiua.push_all([resolution.1, resolution.0]);
     uiua.push(uiua_tracks);
     uiua.push(muzak::instruments::SAMPLE_RATE.get() as f64);
     if opts.strobe.len() == 1 {
@@ -100,6 +130,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
         }
     });
 
+    eprintln!("Launching Uiua visualizer...");
     let _compiler = uiua.run_str(include_str!("./video.ua"))?;
     uiua.print_reports();
     drop(uiua); // Close all the frame sink streams so that FFmpeg knows they're done
@@ -113,6 +144,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 fn spawn_ffmpeg(
     num_tracks: usize,
     asr: u32,
+    (width, height): (usize, usize),
     out_path: &Path,
 ) -> super::Result<(std::process::Child, Vec<FrameSink>)> {
     let mut cmd = std::process::Command::new("ffmpeg");
@@ -125,7 +157,7 @@ fn spawn_ffmpeg(
     for i in 0..num_tracks {
         // Input video
         cmd.args(["-f", "rawvideo"])
-            .args(["-s", "800x100"])
+            .args(["-s", &format!("{width}x{height}")])
             .args(["-pix_fmt", "monob"])
             .args(["-r", "60"]);
 
