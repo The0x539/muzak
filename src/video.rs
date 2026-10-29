@@ -45,12 +45,14 @@ pub struct VideoOpts {
     play_opts: super::PlayOpts,
     #[arg(long, value_parser = parse_note, default_value = "C4", num_args=1..)]
     strobe: Vec<f64>,
+    #[arg(long, num_args = 2, default_values_t = [800, 100])]
+    resolution: Vec<usize>,
 }
 
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
     let parts = score.clone().isolate_parts();
 
-    let resolution = (800, 100);
+    let resolution = (opts.resolution[0], opts.resolution[1]);
 
     let mut sources = vec![];
     let mut duration = Duration::ZERO;
