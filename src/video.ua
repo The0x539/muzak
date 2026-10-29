@@ -30,7 +30,7 @@ InfToZero ← ⨬∘⋅0 =∞⊸⌵
 🔜 ← + InfToZero MinMag ⤚⊃≡🔍≡🔎 ⊙¤
 
 # indices ? indices audio width
-SnapFrameIndices ← ⍜+🔜 ⊃(⋅⋅÷₂|∘|⋅Features|÷₂/↥⧈-)
+SnapFrameIndices ← ⍜+🔜 ⊃(⋅⋅÷₂|∘|⋅Features|/↥⧈-)
 
 # Add zeroes to a frame to ensure its dimensions are height×8ℤ
 # frame ? frame height
