@@ -23,11 +23,9 @@ trait Ipc
 where
     for<'a> &'a Self::Sink: Write,
 {
-    type Intermediate;
     type Sink: Write;
 
-    fn register_source(cmd: &mut Command, id: usize) -> crate::Result<Self::Intermediate>;
-    fn obtain_sink(intermediate: Self::Intermediate) -> crate::Result<Self::Sink>;
+    fn register_source(cmd: &mut Command, id: usize) -> crate::Result<Self::Sink>;
     fn sink_as_raw(sink: &Self::Sink) -> u64;
 }
 
@@ -157,8 +155,7 @@ fn spawn_ffmpeg(
 
     cmd.arg("-hide_banner").arg("-y");
 
-    // PipeWriters on Unix, named pipe listeners on Windows.
-    let mut intermediates = vec![];
+    let mut sinks = vec![];
 
     for i in 0..num_tracks {
         // Input video
@@ -167,7 +164,7 @@ fn spawn_ffmpeg(
             .args(["-pix_fmt", "monob"])
             .args(["-r", &framerate.to_string()]);
 
-        intermediates.push(IpcImpl::register_source(&mut cmd, i)?);
+        sinks.push(IpcImpl::register_source(&mut cmd, i)?);
     }
 
     // Input audio
@@ -187,12 +184,6 @@ fn spawn_ffmpeg(
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()?;
-
-    // On Windows, establish a connection with each named pipe.
-    let sinks = intermediates
-        .into_iter()
-        .map(IpcImpl::obtain_sink)
-        .collect::<Result<_, _>>()?;
 
     Ok((child, sinks))
 }

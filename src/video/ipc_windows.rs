@@ -8,7 +8,6 @@ use super::Ipc;
 pub enum WindowsNamedPipes {}
 
 impl Ipc for WindowsNamedPipes {
-    type Intermediate = PipeListener<pipe_mode::None, pipe_mode::Bytes>;
     type Sink = std::io::PipeWriter;
 
     fn register_source(
@@ -25,10 +24,6 @@ impl Ipc for WindowsNamedPipes {
             .wait_timeout(WaitTimeout::FOREVER)
             .create()?;
 
-        Ok(listener)
-    }
-
-    fn obtain_sink(listener: Self::Intermediate) -> crate::Result<Self::Sink> {
         // FFmpeg wants to read a little bit from each stream before opening the next one.
         // This would normally be reasonable, but really shouldn't be necessary for the rawvideo format.
         //
@@ -40,6 +35,9 @@ impl Ipc for WindowsNamedPipes {
         //
         // I thought using this annoyingly complex named pipe setup instead of inheriting a handle would help.
         // It appears not really?
+        //
+        // On the bright side, this hack at least lets us use a simpler trait design,
+        // where we can have a usable "sink" in the parent process before spawning the child.
         let (mut rx, tx) = std::io::pipe()?;
         std::thread::spawn(move || {
             let mut ipc_tx = listener.accept().unwrap();
