@@ -1,5 +1,3 @@
-# Experimental!
-
 # indices ? fps sampleRate sampleCount
 GetFrameIndices ← (
   ⊙⊸÷ # Duration

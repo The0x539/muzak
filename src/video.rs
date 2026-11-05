@@ -50,6 +50,14 @@ pub struct VideoOpts {
 }
 
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
+    let uiua_asm = {
+        let mut comp = uiua::Compiler::new();
+        comp.experimental(true);
+        comp.print_diagnostics(true);
+        comp.load_str_src(include_str!("./video.ua"), Path::new("src/video.ua"))?;
+        comp.finish()
+    };
+
     let parts = score.clone().isolate_parts();
 
     let resolution = (opts.resolution[0], opts.resolution[1]);
@@ -134,7 +142,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     });
 
     eprintln!("Launching Uiua visualizer...");
-    let _compiler = uiua.run_str(include_str!("./video.ua"))?;
+    uiua.run_asm(uiua_asm)?;
     uiua.print_reports();
     drop(uiua); // Close all the frame sink streams so that FFmpeg knows they're done
 

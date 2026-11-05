@@ -79,8 +79,19 @@ impl From<PlayOpts> for muzak::MixOptions {
 
 type Result<T, E = Box<dyn std::error::Error + Send + Sync>> = std::result::Result<T, E>;
 
-fn main() -> Result<()> {
-    run(Args::parse())
+fn main() {
+    if let Err(e) = run(Args::parse()) {
+        #[allow(unused_mut)]
+        let mut msg = e.to_string();
+
+        #[cfg(feature = "video")]
+        if let Some(uiua_error) = e.downcast_ref::<uiua::UiuaError>() {
+            msg = uiua_error.report().to_string();
+        }
+
+        eprintln!("{msg}");
+        std::process::exit(1);
+    }
 }
 
 fn run(args: Args) -> Result<()> {
