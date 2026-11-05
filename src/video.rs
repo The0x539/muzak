@@ -116,7 +116,6 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     uiua.push(uiua::Array::from_iter(uiua_frame_sinks));
     uiua.push_all([resolution.1, resolution.0]);
     uiua.push(uiua_tracks);
-    uiua.push(muzak::instruments::SAMPLE_RATE.get() as f64);
     if opts.strobe.len() == 1 {
         uiua.push(opts.strobe[0]);
     } else {

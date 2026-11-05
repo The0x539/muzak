@@ -1,9 +1,10 @@
-# indices ? fps sampleRate sampleCount
+# indices ? fps audio
 GetFrameIndices ← (
-  ⊙⊸÷ # Duration
-  ⌈×  # Frame count
-  ÷⟜⇡ # 0..1
-  ⁅×  # 0..samples
+  ⊙⧻        # Sample count
+  ⊙⊸(÷&asr) # Duration
+  ⌈×        # Frame count
+  ÷⟜⇡       # 0..1
+  ⁅×        # 0..samples
 )
 
 # Choose the argument with the smaller absolute value
@@ -48,9 +49,9 @@ Render ← PlotCurve⤙🍕
 # audio ? audio height
 Remap ← ⁅×⊙-₁ ÷⊸/↥ -⊸/↧
 
-# ? fps sampleRate audio width height frameSink
+# ? fps audio width height frameSink
 Main ← (
-  GetFrameIndices⊙⊙⊸⧻
+  ⊸GetFrameIndices
   ⊸₂SnapFrameIndices
   ⊙⊸₂∪Remap
   ≡(&w Encode ⊸Render) ⊙¤
