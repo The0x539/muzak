@@ -3,7 +3,6 @@ use ecow::EcoVec;
 use itertools::Itertools;
 use muzak::types::{Note, Score};
 use rayon::prelude::*;
-use rodio::Source;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -60,7 +59,9 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 
     let parts = score.clone().isolate_parts();
 
-    let resolution = (opts.resolution[0], opts.resolution[1]);
+    let asr = muzak::instruments::SAMPLE_RATE.get();
+    let resolution = [opts.resolution[0], opts.resolution[1]];
+    let width = resolution[0];
 
     let mut sources = vec![];
     let mut duration = Duration::ZERO;
@@ -72,8 +73,8 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 
     let num_tracks = sources.len();
 
-    let estimated_length = duration.as_secs_f64() * sources[0].sample_rate().get() as f64;
-    let prealloc_size = (estimated_length * 1.01 + resolution.0 as f64).ceil() as usize;
+    let estimated_length = duration.as_secs_f64() * asr as f64;
+    let prealloc_size = (estimated_length * 1.01 + width as f64).ceil() as usize;
 
     println!("Generating individual track audio...");
     let max_track_len = AtomicUsize::new(0);
@@ -82,7 +83,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
         .map(|source| {
             let samples = source.into_iter().map(f64::from);
             let mut buf = EcoVec::<f64>::from_elem(0.0, prealloc_size);
-            let len = resolution.0 + buf.make_mut()[resolution.0..].iter_mut().set_from(samples);
+            let len = width + buf.make_mut()[width..].iter_mut().set_from(samples);
             assert!(len < buf.len());
             max_track_len.fetch_max(len, Ordering::Relaxed);
             buf
@@ -96,10 +97,10 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 
     let uiua_tracks = tracks
         .into_iter()
-        .map(|track| uiua::Boxed(uiua::Value::Num(uiua::Array::new(track.len(), track))))
+        .map(uiua::Array::<f64>::from)
+        .map(uiua::Value::Num)
+        .map(uiua::Boxed)
         .collect::<uiua::Array<uiua::Boxed>>();
-
-    let asr = muzak::instruments::SAMPLE_RATE.get();
 
     let (mut ffmpeg, frame_sinks) =
         spawn_ffmpeg(num_tracks, asr, resolution, opts.framerate, output_path)?;
@@ -114,7 +115,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
     let mut uiua = Uiua::with_backend(backend);
 
     uiua.push(uiua::Array::from_iter(uiua_frame_sinks));
-    uiua.push_all([resolution.1, resolution.0]);
+    uiua.push([[resolution[1] as f64, resolution[0] as f64]]); // Extra axis in anticipation of per-track resolution
     uiua.push(uiua_tracks);
     if opts.strobe.len() == 1 {
         uiua.push(opts.strobe[0]);
@@ -154,7 +155,7 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
 fn spawn_ffmpeg(
     num_tracks: usize,
     asr: u32,
-    (width, height): (usize, usize),
+    [width, height]: [usize; 2],
     framerate: usize,
     out_path: &Path,
 ) -> super::Result<(std::process::Child, Vec<FrameSink>)> {

@@ -28,33 +28,33 @@ InfToZero ← ⨬∘⋅0 =∞⊸⌵
 # indices ? indices features radius
 🔜 ← + InfToZero MinMag ⤚⊃≡🔍≡🔎 ⊙¤
 
-# indices ? indices audio width
-SnapFrameIndices ← ⍜+🔜 ⊃(⋅⋅÷₂|∘|⋅Features|/↥⧈-)
+# indices ? indices audio size
+SnapFrameIndices ← ⍜+🔜 ⊃(⁅÷₂⋅⋅⊣|∘|⋅Features|/↥⧈-)
 
 # Add zeroes to a frame to ensure its dimensions are height×8ℤ
-# frame ? frame height
-Pad ← ⬚0↙ ⊂ ⊙(⍜÷₈⌈ ⊸⧻₁)
-# frame ? frame height
-Encode ← °⋯ ↯∞_¯8 ⇌ ˜Pad
+# frame ? frame size
+Pad ← ⬚0↙ ⊂ ⤚₂⋅⋅⊢ ⍜÷₈⌈ ⊸⧻₁
+# frame ? frame size
+Encode ← °⋯ ↯∞_¯8 ⇌ Pad
 
-# frame ? height samples
-PlotCurve ← ↧⊓⌞⊞≤⊞≥ ⊓⇡(⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
+# frame ? samples size
+PlotCurve ← ↧⊓⌞⊞≤⊞≥ ˜⊓(⇡⊢|⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
 
-# samples ? position audio width height
-🍕 ← ⬚÷₂↙ ⊃(⋅⋅∘|⋅∘|∘) ↘
+# samples ? position audio size
+🍕 ← ⬚÷₂↙ ⤚⋅°⊟ ↘
 
-# frame ? position audio width height
-Render ← PlotCurve⤙🍕
+# frame ? position audio size
+Render ← PlotCurve⊸🍕
 
-# audio ? audio height
-Remap ← ⁅×⊙-₁ ÷⊸/↥ -⊸/↧
+# audio ? audio size
+Remap ← ⁅× ⊙(-1⊢) ÷⊸/↥ -⊸/↧
 
-# ? fps audio width height frameSink
+# ? fps audio size frameSink
 Main ← (
   ⊸GetFrameIndices
   ⊸₂SnapFrameIndices
-  ⊙⊸₂∪Remap
-  ≡(&w Encode ⊸Render) ⊙¤
+  ⊙⊸Remap
+  ≡⌟₃(&w Encode ⊸Render)
 )
 
 ⊙◌ # TODO: make dynamic strobe optional
