@@ -1,61 +1,71 @@
-# indices ? fps audio
-GetFrameIndices ← (
-  ⊙⧻        # Sample count
-  ⊙⊸(÷&asr) # Duration
-  ⌈×        # Frame count
-  ÷⟜⇡       # 0..1
-  ⁅×        # 0..samples
-)
+┌─╴Util ~ ⧞ ⭹ 🗕
+  🗕 ← ⨬∘⋅∘ <◡∩⌵ # "Minimize": Choose the argument with the smaller absolute value
+  ⭹ ← ↙↧⊙⊸⧻     # ↙, but accepts a length larger than the array
+  ⧞ ← ⨬∘⋅0 =∞⊸⌵ # Replace infinite values with zero
+└─╴
 
-# Choose the argument with the smaller absolute value
-MinMag ← ⨬∘⋅∘ <◡∩⌵
+# Calculations that take place BEFORE the big loop of rendering each frame.
+# Performance is desirable but not critical.
+┌─╴Prepare
+  # Find "features" in the audio, currently defined as positive zero-crossings
+  Features ← ˜⊂0 >⊃↘₋₁↘₁ ±
 
-# Find "features" in the audio, currently defined as positive zero-crossings
-Features ← ˜⊂0 >⊃↘₋₁↘₁ ±
+  # Find the distance to the nearest feature at/after `index` within `radius`
+  # offset ? index features radius
+  ↝ ← ⬚∞⊢⊚ ˜⭹↘
+  # Find the distance to the nearest feature at/before `index` within `radius`
+  # offset ? index features radius
+  ↜ ← ¯⬚∞⊣⊚ ˜↘ ⊙(↥₀˜-)⟜⧻ ⭹+₁
+  # Find the distances to the nearest features in either direction
+  # offsets ? indices features radius
+  ↭ ← ⧞🗕 ⊃≡↜≡↝ ⊙¤
 
-# ↙, but accepts a length larger than the array
-🪚 ← ↙↧⊙⊸⧻
+  # Get evenly-spaced indices into the audio samples based on framerate and duration
+  # indices ? fps audio
+  GetFrameIndices ← ⁅× ÷⟜⇡ ⌈× ⊙(⊸÷&asr⧻)
 
-# Find the distance to the nearest `feature` at/after `index`, up to `radius`.
-# offset ? index features radius
-🔎 ← ⬚∞⊢⊚ ˜🪚↘
-# Find the distance to the nearest `feature` at/before `index`, up to `radius`.
-# offset ? index features radius
-🔍 ← ¯⬚∞⊣⊚ ˜↘ ⊙(↥₀˜-)⟜⧻ 🪚+₁
+  # Adjust frame indices to be centered around the nearest feature in the audio track.
+  # If an index is more than 1 frame's worth of motion away
+  # from the nearest feature, then that index will not change.
+  # indices ? indices audio resolution
+  SnapFrameIndices ← + ⍜+⟜↭ ⊃(⁅÷₂⋅⋅⊣|∘|⋅Features|/↥⧈-)
 
-InfToZero ← ⨬∘⋅0 =∞⊸⌵
+  # Transform any interval to span the height of the output video
+  # audio ? audio resolution
+  Remap ← ⁅× ⊙(-1⊢) ÷⊸/↥ -⊸/↧
 
-# indices ? indices features radius
-🔜 ← + InfToZero MinMag ⤚⊃≡🔍≡🔎 ⊙¤
+  # indices audio ? fps audio resolution
+  Call ← ⊙Remap ⊸₂SnapFrameIndices ⊸GetFrameIndices
+└─╴
 
-# indices ? indices audio size
-SnapFrameIndices ← ⍜+🔜 ⊃(⁅÷₂⋅⋅⊣|∘|⋅Features|/↥⧈-)
+# The code for actually rendering an individual frame and feeding it to ffmpeg.
+# Performance is critical: ideally, this produces data as fast as ffmpeg can consume it.
+┌─╴Crunch
+  # Take a "slice" of the audio data.
+  # If necessary, pad it with "zero" (i.e. video center) to fill the video width.
+  # samples ? index audio resolution
+  🍕 ← ⬚÷₂↙ ⤚⋅°⊟ ↘
 
-# Add zeroes to a frame to ensure its dimensions are height×8ℤ
-# frame ? frame size
-Pad ← ⬚0↙ ⊂ ⤚₂⋅⋅⊢ ⍜÷₈⌈ ⊸⧻₁
-# frame ? frame size
-Encode ← °⋯ ↯∞_¯8 ⇌ Pad
+  # Draw a frame by assigning an audio sample to each X coordinate,
+  # and marking a pixel as white iff its Y coordinate
+  # is between the audio samples from the previous and current column.
+  # frame ? samples resolution
+  PlotCurve ← ↧⊓⌞⊞≤⊞≥ ˜⊓(⇡⊢|⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
 
-# frame ? samples size
-PlotCurve ← ↧⊓⌞⊞≤⊞≥ ˜⊓(⇡⊢|⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
+  # Add zeroes to a frame to ensure its dimensions are height×8ℤ
+  # frame ? frame resolution
+  Pad ← ⬚0↙ ⊂ ⤚₂⋅⋅⊢ ⍜÷₈⌈ ⊸⧻₁
 
-# samples ? position audio size
-🍕 ← ⬚÷₂↙ ⤚⋅°⊟ ↘
+  # Convert a boolean array to ffmpeg's monob format
+  # packedBits ? bools
+  Encode ← °⋯ ↯∞_¯8
 
-# frame ? position audio size
-Render ← PlotCurve⊸🍕
+  # ? index audio resolution frameSink
+  Call ← &w Encode ⇌ Pad ⊸PlotCurve ⊸🍕
+└─╴
 
-# audio ? audio size
-Remap ← ⁅× ⊙(-1⊢) ÷⊸/↥ -⊸/↧
-
-# ? fps audio size frameSink
-Main ← (
-  ⊸GetFrameIndices
-  ⊸₂SnapFrameIndices
-  ⊙⊸Remap
-  ≡⌟₃(&w Encode ⊸Render)
-)
+# ? fps audio resolution frameSink
+Main ← ≡⌟₃Crunch ⊸Prepare
 
 ⊙◌ # TODO: make dynamic strobe optional
 
