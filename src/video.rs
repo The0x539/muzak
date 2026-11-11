@@ -46,6 +46,8 @@ pub struct VideoOpts {
     resolution: Vec<usize>,
     #[arg(long, default_value_t = 60)]
     framerate: usize,
+    #[arg(long)]
+    composite: Vec<String>,
 }
 
 pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Result<()> {
@@ -102,8 +104,14 @@ pub fn render(score: Score, opts: VideoOpts, output_path: &Path) -> super::Resul
         .map(uiua::Boxed)
         .collect::<uiua::Array<uiua::Boxed>>();
 
-    let (mut ffmpeg, frame_sinks) =
-        spawn_ffmpeg(num_tracks, asr, resolution, opts.framerate, output_path)?;
+    let (mut ffmpeg, frame_sinks) = spawn_ffmpeg(
+        num_tracks,
+        asr,
+        resolution,
+        opts.framerate,
+        opts.composite,
+        output_path,
+    )?;
 
     let mut backend = script_backend::MuzakSysBackend::new(asr);
 
@@ -157,6 +165,7 @@ fn spawn_ffmpeg(
     asr: u32,
     [width, height]: [usize; 2],
     framerate: usize,
+    mut composite: Vec<String>,
     out_path: &Path,
 ) -> super::Result<(std::process::Child, Vec<FrameSink>)> {
     let mut cmd = std::process::Command::new("ffmpeg");
@@ -182,9 +191,21 @@ fn spawn_ffmpeg(
         .args(["-i", "-"]);
 
     // Compositing
-    cmd.args(["-filter_complex", &format!("vstack=inputs={num_tracks}")]);
+    if composite.is_empty() {
+        composite.push(format!("vstack={num_tracks}"));
+    } else {
+        for arg in &mut composite {
+            if Path::new(arg).is_file() {
+                *arg = std::fs::read_to_string(&arg)?;
+            }
+        }
+    }
+    for arg in &composite {
+        cmd.args(["-filter_complex", arg]);
+    }
 
     let child = cmd
+        .arg("-shortest")
         .args(["-preset:v", "slower"])
         .args(["-color_range", "full"])
         .args(["-crf", "25"])
