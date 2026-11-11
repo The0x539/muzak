@@ -170,6 +170,7 @@ fn spawn_ffmpeg(
         cmd.args(["-f", "rawvideo"])
             .args(["-s", &format!("{width}x{height}")])
             .args(["-pix_fmt", "monob"])
+            .args(["-color_range", "full"])
             .args(["-r", &framerate.to_string()]);
 
         sinks.push(IpcImpl::register_source(&mut cmd, i)?);
@@ -185,6 +186,7 @@ fn spawn_ffmpeg(
 
     let child = cmd
         .args(["-preset:v", "slower"])
+        .args(["-color_range", "full"])
         .args(["-crf", "25"])
         // .args(["-c:a", "pcm_s16le"])
         .arg(out_path)
