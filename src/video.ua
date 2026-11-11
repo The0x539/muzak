@@ -15,7 +15,7 @@
   ↝ ← ⬚∞⊢⊚ ˜⭹↘
   # Find the distance to the nearest feature at/before `index` within `radius`
   # offset ? index features radius
-  ↜ ← ¯⬚∞⊣⊚ ˜↘ ⊙(↥₀˜-)⟜⧻ ⭹+₁
+  ↜ ← ¯⬚∞⊣⊚ ↘ ⤚(↥₀˜-⧻) ⭹+₁
   # Find the distances to the nearest features in either direction
   # offsets ? indices features radius
   ↭ ← ⧞🗕 ⊃≡↜≡↝ ⊙¤
@@ -52,16 +52,17 @@
   # frame ? samples resolution
   PlotCurve ← ↧⊓⌞⊞≤⊞≥ ˜⊓(⇡⊢|⊃⧈↧⧈↥ ⊂⊸⊢) # ⊃⧈↧⧈↥ is faster than ⧈⊃↧↥
 
-  # Add zeroes to a frame to ensure its dimensions are height×8ℤ
-  # frame ? frame resolution
-  Pad ← ⬚0↙ ⊂ ⤚₂⋅⋅⊢ ⍜÷₈⌈ ⊸⧻₁
+  # Add zeroes to a frame to ensure its dimensions match the expected output resolution,
+  # as well as extending each row to be a multiple of 8 pixels.
+  # frame ? resolution frame
+  Pad ← ⬚0↙ ⍜(÷₈⊣)⌈
 
   # Convert a boolean array to ffmpeg's monob format
   # packedBits ? bools
   Encode ← °⋯ ↯∞_¯8
 
   # ? index audio resolution frameSink
-  Call ← &w Encode ⇌ Pad ⊸PlotCurve ⊸🍕
+  Call ← &w Encode ⇌ ˜Pad ⊸PlotCurve ⊸🍕
 └─╴
 
 # ? fps audio resolution frameSink
