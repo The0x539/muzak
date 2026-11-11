@@ -1,6 +1,4 @@
-use interprocess::os::windows::named_pipe::{
-    pipe_mode, PipeListener, PipeListenerOptions, WaitTimeout,
-};
+use interprocess::os::windows::named_pipe::{PipeListenerOptions, WaitTimeout};
 use std::os::windows::io::AsRawHandle;
 
 use super::Ipc;
@@ -10,10 +8,7 @@ pub enum WindowsNamedPipes {}
 impl Ipc for WindowsNamedPipes {
     type Sink = std::io::PipeWriter;
 
-    fn register_source(
-        cmd: &mut std::process::Command,
-        id: usize,
-    ) -> crate::Result<Self::Intermediate> {
+    fn register_source(cmd: &mut std::process::Command, id: usize) -> crate::Result<Self::Sink> {
         let pid = std::process::id();
         let path = format!(r"\\.\pipe\muzak-video-ipc-{pid}-{id}");
 
@@ -22,7 +17,7 @@ impl Ipc for WindowsNamedPipes {
         let listener = PipeListenerOptions::new()
             .path(path)
             .wait_timeout(WaitTimeout::FOREVER)
-            .create()?;
+            .create_send_only()?;
 
         // FFmpeg wants to read a little bit from each stream before opening the next one.
         // This would normally be reasonable, but really shouldn't be necessary for the rawvideo format.
