@@ -413,9 +413,11 @@ impl Display for Note {
             }
         } else {
             accidental = match self.semitone {
-                0 => None,
+                -2 => Some('𝄫'),
                 -1 => Some('♭'),
+                0 => None,
                 1 => Some('♯'),
+                2 => Some('𝄪'),
                 _ => todo!(),
             }
         }

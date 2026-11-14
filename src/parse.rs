@@ -33,10 +33,12 @@ macro_rules! literals {
 parsers! {
     pub accidental: Accidental = literals! {
         Accidental;
+        '𝄫' => DoubleFlat,
         '♭' => Flat,
         '♮' => Natural,
         '♯' => Sharp,
         '#' => Sharp,
+        '𝄪' => DoubleSharp,
     };
 
     pub note: Note = seq! {Note{

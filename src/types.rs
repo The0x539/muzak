@@ -258,10 +258,12 @@ impl Note {
 #[repr(i8)]
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, VariantArray)]
 pub enum Accidental {
+    DoubleFlat = -2,
     Flat = -1,
     #[default]
     Natural = 0,
     Sharp = 1,
+    DoubleSharp = 2,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
