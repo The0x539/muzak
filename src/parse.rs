@@ -59,7 +59,7 @@ parsers! {
             .context(StrContext::Expected(StrContextValue::Description("unclosed chord"))),
     ));
 
-    pub dynamic: Dynamic = literals! {
+    dynamic_cursive: Dynamic = literals! {
         Dynamic;
         "𝓹𝓹" => Pianissimo,
         "𝓯𝓯" => Fortissimo,
@@ -68,6 +68,19 @@ parsers! {
         "𝓹" => Piano,
         "𝓯" => Forte,
     };
+
+    dynamic_musical: Dynamic = literals! {
+        Dynamic;
+        "𝆏𝆏" => Pianissimo,
+        "𝆑𝆑" => Fortissimo,
+        "𝆐𝆏" => MezzoPiano,
+        "𝆐𝆑" => MezzoForte,
+        "𝆏" => Piano,
+        "𝆑" => Forte,
+    };
+
+    // The above two are split because winnow doesn't go up to 12 alternatives I guess.
+    pub dynamic: Dynamic = alt((dynamic_cursive, dynamic_musical));
 
     pub quaver: Quaver = literals! {
         Quaver;
