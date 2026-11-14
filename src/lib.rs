@@ -51,20 +51,15 @@ pub fn mix(score: &Score, options: MixOptions) -> (impl Source<Item = f32> + 'st
     }
 
     let true_duration = score.duration();
-
     let mixed = mixer.amplify(options.volume).take_duration(true_duration);
-
-    // At the time of writing, rodio is not designed such that take_duration on
-    // an infinite source can correctly report its finite and guaranteed duration.
-    // This is exactly what we do to construct individual notes/chords,
-    // so the full combined source currently cannot report its own duration.
-    // This knowledge is necessary for the `sleep` call in `play`, so just return it for now.
     (mixed, true_duration)
 }
 
-pub fn play(source: impl Source<Item = f32> + Send + 'static, duration: Duration) {
-    let sink_handle = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
-    let output_sink = sink_handle.mixer();
-    output_sink.add(source);
-    std::thread::sleep(duration);
+pub fn play(source: impl Source<Item = f32> + Send + 'static) {
+    let mut sink_handle = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
+    let player = rodio::Player::connect_new(&sink_handle.mixer());
+    player.append(source);
+    player.sleep_until_end();
+    sink_handle.log_on_drop(false);
+    std::thread::sleep(std::time::Duration::from_millis(500));
 }

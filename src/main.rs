@@ -118,13 +118,8 @@ fn run(args: Args) -> Result<()> {
         Command::Play(options) => {
             // winnow errors don't impl std::error::Error for some reason
             let score = muzak::parse(&input).expect("Could not parse score");
-            let (source, duration) = muzak::mix(&score, options.into());
-            output_audio(
-                args.output_file.as_deref(),
-                options.force_play,
-                source,
-                duration,
-            )?;
+            let (source, _duration) = muzak::mix(&score, options.into());
+            output_audio(args.output_file.as_deref(), options.force_play, source)?;
         }
         #[cfg(feature = "submit")]
         Command::Submit => submit_song(&input)?,
@@ -177,12 +172,11 @@ fn output_audio(
     path: Option<&Path>,
     force_play: bool,
     source: impl rodio::Source<Item = f32> + Send + 'static,
-    duration: Duration,
 ) -> Result<()> {
     if let Some(path) = path {
         write_wav(ask_before_overwriting(path)?, source)?;
     } else if force_play || std::io::stdout().is_terminal() {
-        muzak::play(source, duration);
+        muzak::play(source);
     } else {
         write_wav(std::io::stdout(), source)?;
     }
